@@ -152,7 +152,7 @@ The payload is an [in-toto Statement v1](https://in-toto.io/Statement/v1):
 {
   "_type": "https://in-toto.io/Statement/v1",
   "subject": [{ "name": "<caseId or 'ledger'>", "digest": { "sha256": "<events digest>" } }],
-  "predicateType": "https://testigo.dev/attestation/v0.1",
+  "predicateType": "https://github.com/cyl-castillo/testigo/attestation/v0.1",
   "predicate": { … }
 }
 ```
@@ -263,6 +263,6 @@ This mapping is informative, not legal advice.
 ## 5. Versioning
 
 The predicate type URI carries the version
-(`https://testigo.dev/attestation/v0.1`). Breaking changes bump the version;
+(`https://github.com/cyl-castillo/testigo/attestation/v0.1`). Breaking changes bump the version;
 verifiers MUST reject predicate types they don't implement. Ledger-level
 additions (new kinds, new payload fields) are non-breaking (§1.6).

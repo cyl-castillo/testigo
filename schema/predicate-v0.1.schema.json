@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://testigo.dev/attestation/v0.1/schema",
+  "$id": "https://github.com/cyl-castillo/testigo/attestation/v0.1/schema",
   "title": "Testigo attestation predicate v0.1",
   "type": "object",
   "required": ["project", "exportedAtMs", "generator", "range", "events"],
