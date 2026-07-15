@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://testigo.dev/attestation/v0.1/schema",
+  "title": "Testigo attestation predicate v0.1",
+  "type": "object",
+  "required": ["project", "exportedAtMs", "generator", "range", "events"],
+  "properties": {
+    "caseId": {
+      "type": ["string", "null"],
+      "description": "Exported case (intent thread); null = full ledger export."
+    },
+    "project": { "type": "string", "description": "Project basename (not a path)." },
+    "exportedAtMs": { "type": "integer" },
+    "generator": { "type": "string", "description": "Producing software, e.g. agent-console/0.48.0" },
+    "range": {
+      "type": "object",
+      "required": ["fromSeq", "toSeq", "prevHashBefore"],
+      "properties": {
+        "fromSeq": { "type": "integer", "minimum": 0 },
+        "toSeq": { "type": "integer", "minimum": 0 },
+        "prevHashBefore": {
+          "type": "string",
+          "description": "hash of the event before fromSeq; \"genesis\" when fromSeq is 0."
+        }
+      }
+    },
+    "ledgerHead": {
+      "type": "object",
+      "description": "Producing ledger's tail at export time (informative).",
+      "properties": {
+        "seq": { "type": ["integer", "null"] },
+        "hash": { "type": ["string", "null"] }
+      }
+    },
+    "redactionCount": { "type": "integer", "minimum": 0 },
+    "events": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["line", "redacted"],
+            "properties": {
+              "line": {
+                "type": "string",
+                "description": "Raw ledger line, byte-exact (or with secrets replaced when redacted=true; hashes never altered)."
+              },
+              "redacted": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": ["stub"],
+            "properties": {
+              "stub": {
+                "type": "object",
+                "required": ["seq", "prevHash", "hash"],
+                "properties": {
+                  "seq": { "type": "integer" },
+                  "prevHash": { "type": "string" },
+                  "hash": { "type": "string" },
+                  "kind": { "type": "string" }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  }
+}
