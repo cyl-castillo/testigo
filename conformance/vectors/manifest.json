@@ -1,0 +1,126 @@
+{
+  "suite": "testigo-conformance",
+  "spec": "testigo-proofpack/v0.1 — SPEC.md §2.4/§2.5",
+  "keyId": "3097e2dee2cb4a34b53840cdb705aed71067c36f68db0e0f559c3f3fa043315f",
+  "note": "Signed with the PUBLISHED throwaway conformance key (seed 0x42×32) — these packets prove nothing and never will.",
+  "vectors": [
+    {
+      "file": "valid-minimal.proofpack.json",
+      "description": "Full-ledger export, every event clean: all checks pass, every content hash recomputes.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "valid-redacted-stub.proofpack.json",
+      "description": "Case export with one auto-redacted event, one manually redacted event (payload replaced, hash kept) and one out-of-case stub. Valid; redacted and stub entries MUST be visibly reported (§2.4 step 7).",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 2,
+          "redacted": 2,
+          "stubs": 1
+        },
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "valid-unknown-kind.proofpack.json",
+      "description": "Ledger containing an event kind no verifier knows. Verifiers MUST ignore unknown kinds (§1.7): the chain still verifies.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 3,
+          "recomputed": 3,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "invalid-format.proofpack.json",
+      "description": "Unknown packet format string. MUST be rejected at §2.4 step 1.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "format"
+      }
+    },
+    {
+      "file": "invalid-keyid.proofpack.json",
+      "description": "Embedded signature keyid does not equal sha256 of the embedded public key. MUST fail §2.4 step 2 (the signature itself is fine — the keyid is the lie).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "keyid"
+      }
+    },
+    {
+      "file": "invalid-signature.proofpack.json",
+      "description": "Signature bytes corrupted after signing (transport tamper). MUST fail §2.4 step 3.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "signature"
+      }
+    },
+    {
+      "file": "invalid-digest.proofpack.json",
+      "description": "Producer bug signed over: the subject digest does not match the packed events. The signature VERIFIES — the defect is inside the signed statement. MUST fail §2.4 step 4.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "digest"
+      }
+    },
+    {
+      "file": "invalid-linkage.proofpack.json",
+      "description": "Producer bug signed over: a stub's prevHash does not chain from the previous entry (signature and subject digest both verify). MUST fail §2.4 step 5.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "linkage"
+      }
+    },
+    {
+      "file": "invalid-content-hash.proofpack.json",
+      "description": "Producer bug signed over: a non-redacted line's content was altered but its stored hash (and the chain around it) kept — linkage holds, recomputation does not. MUST fail §2.4 step 6.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "contentHash"
+      }
+    },
+    {
+      "file": "valid-timestamped.proofpack.json",
+      "description": "Valid packet carrying a real RFC 3161 token over its signature (§2.5). Verifiers SHOULD report it as declared — and MUST NOT claim cryptographic token verification without a CMS stack.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "declared"
+      }
+    },
+    {
+      "file": "invalid-timestamp.proofpack.json",
+      "description": "Same packet, but the declared messageImprint is not sha256 of this signature. The packet stays VALID (§2.4 steps 1–6 pass; the timestamp sits outside the envelope) — but the timestamp MUST be reported as not matching, never as a proof.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "mismatch"
+      }
+    }
+  ]
+}

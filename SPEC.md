@@ -244,6 +244,9 @@ Given a packet, a verifier MUST:
 A packet is *valid* when steps 1–6 pass. What validity means — and does not
 mean — is spelled out in §3.
 
+A [conformance suite](conformance/) provides golden vectors isolating each
+step above (and §2.5), plus a reference verifier to run them.
+
 ### 2.5 Trusted timestamp (optional, additive)
 
 A producer MAY obtain an [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161)

@@ -57,6 +57,11 @@ or any DSSE tooling.
 The protocol is specified in [SPEC.md](SPEC.md) (v0.1, draft). The predicate
 schema lives in [`schema/predicate-v0.1.schema.json`](schema/predicate-v0.1.schema.json).
 
+Implementing a verifier? The [conformance suite](conformance/) has golden
+vectors isolating every verification step — including valid signatures
+wrapped around internal defects — plus a zero-dependency reference verifier
+(`node conformance/verify.mjs`).
+
 Reference implementation: [agent-console](https://github.com/cyl-castillo/agent-console)
 (≥ v0.48.0) — captures the ledger ambiently from Claude Code / Codex sessions
 (prompts, approvals, tool results, per-turn diffs), exports and signs packets,
