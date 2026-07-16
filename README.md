@@ -47,7 +47,10 @@ or any DSSE tooling.
 2. Drop [`examples/demo.proofpack.json`](examples/demo.proofpack.json) on it.
 3. You should see: signature valid, subject digest OK, hash chain intact —
    including one **redacted** event (linkage verified, content declared
-   unverifiable) and one **stub** (an out-of-case event pruned to hashes).
+   unverifiable), one **stub** (an out-of-case event pruned to hashes), and a
+   declared **RFC 3161 timestamp** (a real freetsa.org token over the packet's
+   signature; the page checks the imprint and hands you the token plus the
+   openssl commands rather than pretending to verify CMS in the browser).
 
 ## Spec
 
@@ -111,8 +114,10 @@ selectively later (per-event redaction keeps the chain verifiable).
   v0.46.0 (turn results), v0.47.0 (packets + verifier), v0.48.0 (timelines +
   commit trailers), v0.49.0 (pre-sign redaction review — the published case
   study below was produced with it).
-- Roadmap: sigstore keyless signing, RFC 3161 timestamps, git-ref ledger
-  anchoring, requirement links beyond Jira, cross-project cases.
+- Spec'd and additive: git-ref ledger anchoring (§1.6), RFC 3161 timestamp of
+  the packet signature (§2.5 — the demo example carries a real token).
+- Roadmap: sigstore keyless signing, requirement links beyond Jira,
+  cross-project cases.
 
 ## License
 
