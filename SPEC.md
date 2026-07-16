@@ -95,8 +95,11 @@ tampering and MUST be reported by verification.
 
 ### 1.6 Anchoring (optional, additive — since v0.2 of the reference impl)
 
-Producers working inside a git checkout SHOULD anchor the ledger head after
-each closing event (`turn_end`, `job_run`):
+Producers working inside a git checkout MAY anchor the ledger head after
+each closing event (`turn_end`, `job_run`). Anchoring writes to the project's
+repository, so it MUST be under the project owner's control — the reference
+implementation makes it per-project opt-in (witnessing itself stays local and
+on by default). Packets without anchors remain fully valid:
 
 - **Local ref**: a blob `{"seq":N,"hash":"…","ts":T}` pinned at
   `refs/agent-console/testigo-head` in the checkout.
