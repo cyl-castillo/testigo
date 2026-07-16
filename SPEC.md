@@ -236,8 +236,63 @@ Given a packet, a verifier MUST:
    entries. Redacted and stub entries MUST be visibly reported, not silently
    passed.
 
+8. If `timestamp` is present (§2.5), report it: the declared TSA and message
+   imprint, plus whatever informative checks were performed — clearly labeled
+   as **not** a cryptographic verification of the token unless the verifier
+   actually validates the token's CMS structure and the TSA certificate chain.
+
 A packet is *valid* when steps 1–6 pass. What validity means — and does not
 mean — is spelled out in §3.
+
+### 2.5 Trusted timestamp (optional, additive)
+
+A producer MAY obtain an [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161)
+timestamp on the packet's signature at export time and embed it as a top-level
+member of the packet:
+
+```json
+"timestamp": {
+  "type": "rfc3161",
+  "tsaUrl": "https://freetsa.org/tsr",
+  "hashAlg": "sha256",
+  "messageImprint": "<lowercase hex sha256 of the raw signature bytes>",
+  "token": "<base64(DER TimeStampResp, exactly as returned by the TSA)>"
+}
+```
+
+The message imprinted is sha256 over the **raw (base64-decoded) bytes of
+`signatures[0].sig`**. Timestamping the signature — rather than the payload —
+proves the *signing act*, and therefore everything signed, existed no later
+than the token's `genTime` (the CAdES signature-time-stamp construction).
+
+`tsaUrl`, `hashAlg` and `messageImprint` are convenience copies; the
+authoritative imprint is the one inside the token. `token` carries the DER
+`TimeStampResp` unmodified, so standard tooling consumes it directly.
+
+Because the timestamp lives outside the signed envelope, stripping it does not
+break the signature — removal loses the existence proof but forges nothing.
+Verifiers MUST treat its absence as normal, never as a failure. The field is
+additive: `format` stays `testigo-proofpack/v0.1`, the predicate type does not
+change, and packets with or without `timestamp` are equally valid.
+
+**Verifying the token.** Full verification means validating the token's CMS
+signature and the TSA's certificate chain, e.g.:
+
+```
+base64 -d ts-token.b64 > packet.tsr
+openssl ts -reply -in packet.tsr -text                       # inspect
+openssl ts -verify -digest <messageImprint> -in packet.tsr -CAfile <tsa-chain.pem>
+```
+
+A portable verifier that does not implement ASN.1/CMS MUST NOT claim to verify
+the token. It SHOULD report the token's presence and MAY perform *informative*
+checks: that sha256 of the signature bytes equals `messageImprint`, and that
+those digest bytes occur inside the token DER. Trust in the timestamp is trust
+in the chosen TSA.
+
+**Privacy note:** requesting a token reveals to the TSA (and to network
+observers) only a signature hash and the requester's network origin — no
+ledger content.
 
 ---
 
@@ -252,8 +307,9 @@ of shared events); it has not been modified since export.
 - That the ledger is *complete* (events could have been withheld from capture,
   or the whole ledger fabricated before signing — the local ledger is
   tamper-evident only against post-hoc edits).
-- That timestamps are accurate (producer's local clock; no trusted timestamping
-  in v0.1).
+- That per-event timestamps are accurate (`ts` is the producer's local clock).
+  A packet-level RFC 3161 token (§2.5) anchors the *export* in time — trust
+  then rests on the chosen TSA — but does not correct per-event timestamps.
 - That the event→turn binding is exact (§1.3 — heuristic, declared).
 - The content of redacted events (declared unverifiable, by design).
 - Who physically operated the machine — `actor: human` records that the
