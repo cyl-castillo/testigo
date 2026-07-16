@@ -31,11 +31,11 @@ healing in §1.5.
 | `ts` | integer | yes | epoch milliseconds (producer's local clock; `0` if unknown) |
 | `caseId` | string | yes | the intent thread (§1.4) |
 | `turnId` | string | no | the turn this event happened inside (§1.3) |
-| `kind` | string | yes | event kind (§1.6) |
+| `kind` | string | yes | event kind (§1.7) |
 | `termId` | string | no | producer-scoped terminal/session binding |
 | `sessionId` | string | no | engine conversation id (e.g. Claude Code session) |
 | `actor` | string | yes | `human`, `agent`, or `system` |
-| `payload` | object | yes | kind-specific content (§1.6) |
+| `payload` | object | yes | kind-specific content (§1.7) |
 | `prevHash` | string | yes | `hash` of the previous event; `"genesis"` for `seq` 0 |
 | `hash` | string | yes | this event's content hash (§1.5) |
 
@@ -93,7 +93,24 @@ MUST tolerate it; producers SHOULD heal it by truncating the torn final line
 (atomically) before the next append. Unparseable lines anywhere else are
 tampering and MUST be reported by verification.
 
-### 1.6 Event kinds
+### 1.6 Anchoring (optional, additive — since v0.2 of the reference impl)
+
+Producers working inside a git checkout SHOULD anchor the ledger head after
+each closing event (`turn_end`, `job_run`):
+
+- **Local ref**: a blob `{"seq":N,"hash":"…","ts":T}` pinned at
+  `refs/agent-console/testigo-head` in the checkout.
+- **Distributed trailer**: commits made through the producer carry
+  `Testigo-Head: <seq>:<hash>` (next to `Testigo-Case:`), so the anchor rides
+  ordinary pushes into remote history and clones.
+
+Rewriting the ledger consistently now also requires rewriting the ref and any
+pushed commits that cite the old head. This strengthens tamper-EVIDENCE — it
+is still not tamper-proof against an actor with full control of every copy.
+Verifiers and auditors MAY cross-check a packet's `ledgerHead` against
+anchored values found in refs or commit trailers.
+
+### 1.7 Event kinds
 
 | kind | actor | payload (informative) |
 |---|---|---|
