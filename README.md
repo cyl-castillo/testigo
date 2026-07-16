@@ -68,6 +68,11 @@ Reference implementation: [agent-console](https://github.com/cyl-castillo/agent-
 and stamps console-made commits with `Testigo-Case:` trailers resolved from
 ledger evidence.
 
+Lightweight capture without the console: [`cli/`](cli/) is a zero-dependency
+Node CLI that witnesses any Claude Code session via hooks (`testigo init` and
+you're recording), links cases, and exports signed packets — with the
+capture-scope differences [stated plainly](cli/README.md#what-this-captures--and-what-it-doesnt).
+
 ## Honesty by design
 
 Testigo prefers a smaller true claim over a bigger false one:

@@ -14,6 +14,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const sha256hex = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
@@ -115,37 +116,41 @@ export function verifyPacket(pkt) {
   return { valid: true, firstFailure: null, counts, timestamp, keyId };
 }
 
-// ---- runner -----------------------------------------------------------------
+// ---- runner (only when executed directly — verifyPacket stays importable) ---
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
-const arg = process.argv[2];
+function runSuite() {
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  const arg = process.argv[2];
 
-if (arg) {
-  const result = verifyPacket(JSON.parse(fs.readFileSync(arg, "utf8")));
-  console.log(JSON.stringify(result, null, 2));
-  process.exit(result.valid ? 0 : 1);
-}
-
-const dir = path.join(HERE, "vectors");
-const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
-let failures = 0;
-for (const v of manifest.vectors) {
-  const got = verifyPacket(JSON.parse(fs.readFileSync(path.join(dir, v.file), "utf8")));
-  const problems = [];
-  if (got.valid !== v.expect.valid) problems.push(`valid: got ${got.valid}, want ${v.expect.valid}`);
-  if (!v.expect.valid && got.firstFailure !== v.expect.firstFailure)
-    problems.push(`firstFailure: got ${got.firstFailure}, want ${v.expect.firstFailure}`);
-  if (v.expect.counts)
-    for (const [k, want] of Object.entries(v.expect.counts))
-      if (got.counts?.[k] !== want) problems.push(`counts.${k}: got ${got.counts?.[k]}, want ${want}`);
-  if (v.expect.timestamp && got.timestamp !== v.expect.timestamp)
-    problems.push(`timestamp: got ${got.timestamp}, want ${v.expect.timestamp}`);
-  if (problems.length) {
-    failures++;
-    console.log(`FAIL  ${v.file}\n      ${problems.join("\n      ")}`);
-  } else {
-    console.log(`ok    ${v.file}`);
+  if (arg) {
+    const result = verifyPacket(JSON.parse(fs.readFileSync(arg, "utf8")));
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(result.valid ? 0 : 1);
   }
+
+  const dir = path.join(here, "vectors");
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
+  let failures = 0;
+  for (const v of manifest.vectors) {
+    const got = verifyPacket(JSON.parse(fs.readFileSync(path.join(dir, v.file), "utf8")));
+    const problems = [];
+    if (got.valid !== v.expect.valid) problems.push(`valid: got ${got.valid}, want ${v.expect.valid}`);
+    if (!v.expect.valid && got.firstFailure !== v.expect.firstFailure)
+      problems.push(`firstFailure: got ${got.firstFailure}, want ${v.expect.firstFailure}`);
+    if (v.expect.counts)
+      for (const [k, want] of Object.entries(v.expect.counts))
+        if (got.counts?.[k] !== want) problems.push(`counts.${k}: got ${got.counts?.[k]}, want ${want}`);
+    if (v.expect.timestamp && got.timestamp !== v.expect.timestamp)
+      problems.push(`timestamp: got ${got.timestamp}, want ${v.expect.timestamp}`);
+    if (problems.length) {
+      failures++;
+      console.log(`FAIL  ${v.file}\n      ${problems.join("\n      ")}`);
+    } else {
+      console.log(`ok    ${v.file}`);
+    }
+  }
+  console.log(failures ? `\n${failures} vector(s) failed` : `\nall ${manifest.vectors.length} vectors pass`);
+  process.exit(failures ? 1 : 0);
 }
-console.log(failures ? `\n${failures} vector(s) failed` : `\nall ${manifest.vectors.length} vectors pass`);
-process.exit(failures ? 1 : 0);
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) runSuite();
