@@ -80,15 +80,20 @@ each individually approved by a human — three captured results (services,
 API health, release state), and an empty turn diff proving the verification
 was read-only. Chain intact, packet signed and verified.
 
-The packet's content stays private (it contains production infrastructure
-details); its public metadata is reproducible by anyone we share it with:
+A **redacted packet of this session is published** at
+[`examples/fixy-deploy-verification.proofpack.json`](examples/fixy-deploy-verification.proofpack.json)
+— drop it on the verifier: the human intent, the three approval decisions and
+the empty turn diff are fully verifiable; the agent's commands and outputs are
+redacted per the protocol (payload excluded, chain linkage intact, reported as
+such). The un-redacted packet stays private; both are signed by the same key:
 
 | | |
 |---|---|
 | event sequence | `prompt → snapshot → (approval_request → approval_decision → tool_result) ×3 → turn_end` |
 | human approvals | 3/3 commands, each with an explicit decision |
 | turn diff | `files: []` — read-only, provably |
-| subject digest | `e6a889d0c460a9c2716bc365bdc9d52250822702f0b699141e0713d18e0a41bc` |
+| digest (private, full) | `e6a889d0c460a9c2716bc365bdc9d52250822702f0b699141e0713d18e0a41bc` |
+| digest (published, redacted) | `af21a0b7bfe48022764831415f1c82f45211f0b886ad59bbe4a19842308e0ceb` |
 | signer key id | `8caf09075df11abbbdea5cd1d120a5654d8d1ce2a32e2a6f018dde557c5014da` |
 | generator | `agent-console/0.48.1` |
 
