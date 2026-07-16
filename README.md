@@ -106,7 +106,8 @@ selectively later (per-event redaction keeps the chain verifiable).
 - Spec: v0.1 (draft — field names and predicate type are stable within v0.1).
 - Reference implementation: shipping since agent-console v0.45.0 (ledger),
   v0.46.0 (turn results), v0.47.0 (packets + verifier), v0.48.0 (timelines +
-  commit trailers).
+  commit trailers), v0.49.0 (pre-sign redaction review — the published case
+  study below was produced with it).
 - Roadmap: sigstore keyless signing, RFC 3161 timestamps, git-ref ledger
   anchoring, requirement links beyond Jira, cross-project cases.
 
