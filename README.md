@@ -39,8 +39,11 @@ or any DSSE tooling.
 
 ## Quickstart: verify the example
 
-1. Open [`verifier/testigo-verifier.html`](verifier/testigo-verifier.html) in a
-   browser (no network, no install — everything runs locally via WebCrypto).
+1. Open the hosted verifier at
+   **<https://cyl-castillo.github.io/testigo/verifier/testigo-verifier.html>**
+   (or [`verifier/testigo-verifier.html`](verifier/testigo-verifier.html)
+   locally). No install; verification runs entirely in your browser — the
+   page makes no network requests with your packet.
 2. Drop [`examples/demo.proofpack.json`](examples/demo.proofpack.json) on it.
 3. You should see: signature valid, subject digest OK, hash chain intact —
    including one **redacted** event (linkage verified, content declared
