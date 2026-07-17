@@ -1,0 +1,77 @@
+// Protobuf definition for the session-chain predicate (draft v0.1), shaped
+// for in-toto/attestation's protos/ tree (jsonpb-compatible: field names
+// map to the lowerCamelCase JSON in session-chain.md).
+//
+// Ledger events are carried as raw line strings ON PURPOSE: the format's
+// verification is byte-exact (sha256 over the stored bytes), so events must
+// never round-trip through a message type that could re-serialize them.
+
+syntax = "proto3";
+
+package in_toto_attestation.predicates.session_chain.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/in-toto/attestation/go/predicates/session_chain/v1";
+option java_package = "io.github.intoto.attestation.predicates.session_chain.v1";
+
+message SessionChain {
+  // Intent thread exported (e.g. "jira:PROJ-1"); empty = whole ledger.
+  string case_id = 1;
+
+  // Producer-scoped project name (informative).
+  string project = 2;
+
+  // When the producer sealed and signed this segment (RFC 3339 in JSON).
+  google.protobuf.Timestamp exported_at = 3;
+
+  // Producing software and version (informative).
+  string generator = 4;
+
+  Range range = 5;
+
+  // Producing ledger's tail at export time (informative).
+  ChainPoint ledger_head = 6;
+
+  // Redactions applied before signing; must match what events evidence.
+  int64 redaction_count = 7;
+
+  // Segment entries in ledger order; linkage must hold across all of them.
+  repeated Entry events = 8;
+}
+
+message Range {
+  int64 from_seq = 1;
+  int64 to_seq = 2;
+  // Hash of the event immediately before from_seq; "genesis" at seq 0.
+  string prev_hash_before = 3;
+}
+
+message ChainPoint {
+  int64 seq = 1;
+  string hash = 2;
+}
+
+message Entry {
+  oneof entry {
+    // Full or redacted event: the raw ledger line, byte-exact.
+    Line line_entry = 1;
+    // In-range event of another case, pruned to linkage-only.
+    Stub stub = 2;
+  }
+}
+
+message Line {
+  // The ledger line exactly as stored; hashes recompute over these bytes.
+  string line = 1;
+  // True when content was replaced pre-signing (linkage stays verifiable;
+  // content recomputation is impossible by design and must be reported).
+  bool redacted = 2;
+}
+
+message Stub {
+  int64 seq = 1;
+  string prev_hash = 2;
+  string hash = 3;
+  string kind = 4;
+}
