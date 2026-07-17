@@ -84,6 +84,12 @@ To recompute from a raw line, replace the *last* occurrence of `"hash":"…"` �
 which is the final member — with `"hash":""` and hash the result. This makes
 verification byte-exact without canonicalization machinery.
 
+> **Deployment note:** byte-exactness holds exactly as far as the raw bytes
+> travel intact. Any pipeline that reparses and re-emits ledger lines — log
+> shippers, SIEM ingestion, pretty-printers — breaks hash recomputation even
+> when it preserves JSON semantics. Ship the raw file (or the packet, which
+> embeds lines verbatim); never a re-serialization.
+
 The chain is **tamper-evident, not tamper-proof**: an actor with disk access
 can rewrite the whole file consistently. Trust is established at packet export
 (signature), not at rest.
