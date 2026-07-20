@@ -100,6 +100,10 @@ function packet({
   project = "conformance",
   range,
   head,
+  predicateType = PREDICATE_TYPE,
+  // Session-chain draft convention (predicate/session-chain.md): RFC 3339
+  // exportedAt instead of testigo v0.1's epoch-ms exportedAtMs.
+  exportedAtRfc3339 = false,
   mutateStatement, // producer bug: defect signed over
   mutatePacket, // transport tamper: defect after signing
 }) {
@@ -110,11 +114,13 @@ function packet({
     subject: [
       { name: caseId ?? "ledger", digest: { sha256: sha256hex(Buffer.from(eventsBody, "utf8")) } },
     ],
-    predicateType: PREDICATE_TYPE,
+    predicateType,
     predicate: {
       caseId,
       project,
-      exportedAtMs: 1789000100000,
+      ...(exportedAtRfc3339
+        ? { exportedAt: "2026-07-17T12:00:00Z" }
+        : { exportedAtMs: 1789000100000 }),
       generator: "testigo-conformance/1.0",
       range,
       ledgerHead: head,
@@ -199,8 +205,8 @@ function caseEntries() {
 // ---- vectors ---------------------------------------------------------------
 
 const vectors = [];
-const add = (name, description, pkt, expect) =>
-  vectors.push({ name, description, pkt, expect });
+const add = (name, description, pkt, expect, credit) =>
+  vectors.push({ name, description, pkt, expect, credit });
 
 add(
   "valid-minimal",
@@ -311,6 +317,21 @@ add(
   { valid: false, firstFailure: "contentHash" },
 );
 
+add(
+  "invalid-redaction-count",
+  "Producer bug signed over: redactionCount does not equal the number of redacted entries (§2.3 — stubs are NOT redactions). Everything else verifies; the miscount misrepresents what was withheld. MUST fail §2.4 step 6.",
+  packet({
+    entries: caseEntries(),
+    caseId: CASE,
+    range: FULL_RANGE,
+    head: HEAD,
+    mutateStatement: (st) => {
+      st.predicate.redactionCount = 3; // counts the stub as a redaction — the exact wrong guess §2.3 now forecloses
+    },
+  }),
+  { valid: false, firstFailure: "redactionCount" },
+);
+
 // ---- timestamp vectors (need the one-time token fixture) -------------------
 
 if (fs.existsSync(TOKEN_FIXTURE)) {
@@ -343,6 +364,23 @@ if (fs.existsSync(TOKEN_FIXTURE)) {
     { ...base, timestamp: { ...ts, messageImprint: "a".repeat(64) } },
     { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "mismatch" },
   );
+  add(
+    "valid-timestamp-stripped",
+    "The valid-timestamped packet with its timestamp member removed. Stripping loses the existence proof but forges nothing (§2.5): the packet MUST verify as valid with timestamp reported as absent — a verifier that fails a stripped packet is wrong.",
+    { ...base },
+    { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "none" },
+    "Rul1an (corpus cross, cyl-castillo/testigo#1)",
+  );
+  add(
+    "invalid-timestamp-transplant",
+    "A valid packet carrying the timestamp member of a DIFFERENT valid packet — token and declared imprint are internally consistent with each other, but imprint a different signature. The splice a relying party actually encounters: the packet stays valid, the timestamp MUST be reported as not matching (it must never migrate between packets).",
+    (() => {
+      const other = packet({ entries: BASE.map(full), range: FULL_RANGE, head: HEAD });
+      return { ...other, timestamp: ts };
+    })(),
+    { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "mismatch" },
+    "Rul1an (corpus cross, cyl-castillo/testigo#1)",
+  );
 } else {
   const base = packet({ entries: BASE.map(full), project: "conformance-ts", range: FULL_RANGE, head: HEAD });
   const imprint = sha256hex(Buffer.from(base.envelope.signatures[0].sig, "base64"));
@@ -354,6 +392,58 @@ if (fs.existsSync(TOKEN_FIXTURE)) {
       `  base64 -w0 resp.tsr > fixtures/timestamp-token.b64\n`,
   );
 }
+
+// ---- session-chain subset (predicate/vectors) ------------------------------
+// The same rules under the in-toto predicate proposal's conventions
+// (predicateType URI + RFC 3339 exportedAt), so a checker of THAT predicate
+// has bytes to run against — see predicate/session-chain.md. The subject
+// shape mirrors testigo v0.1 for now; its redesign (produced artifacts +
+// segment digest) is under discussion in in-toto/attestation#554.
+
+const SC_OUT = path.join(HERE, "..", "predicate", "vectors");
+const SC_TYPE = "https://in-toto.io/attestation/session-chain/v0.1";
+const sc = { predicateType: SC_TYPE, exportedAtRfc3339: true };
+const scVectors = [];
+const scAdd = (name, description, pkt, expect) =>
+  scVectors.push({ name, description, pkt, expect });
+
+scAdd(
+  "sc-valid-minimal",
+  "Full-ledger export under the session-chain predicate conventions: all checks pass.",
+  packet({ ...sc, entries: BASE.map(full), range: FULL_RANGE, head: HEAD }),
+  { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "none" },
+);
+scAdd(
+  "sc-valid-redacted-stub",
+  "Case export with redactions and a stub; redactionCount counts redacted entries only (stubs are pruning, not redaction).",
+  packet({ ...sc, entries: caseEntries(), caseId: CASE, range: FULL_RANGE, head: HEAD }),
+  { valid: true, counts: { entries: 5, recomputed: 2, redacted: 2, stubs: 1 }, timestamp: "none" },
+);
+scAdd(
+  "sc-invalid-linkage",
+  "Producer bug signed over: broken chain linkage at a stub.",
+  (() => {
+    const entries = caseEntries();
+    entries[2].stub.prevHash = "d".repeat(64);
+    return packet({ ...sc, entries, caseId: CASE, range: FULL_RANGE, head: HEAD });
+  })(),
+  { valid: false, firstFailure: "linkage" },
+);
+scAdd(
+  "sc-invalid-redaction-count",
+  "Producer bug signed over: redactionCount counts the stub as a redaction (3 instead of 2).",
+  packet({
+    ...sc,
+    entries: caseEntries(),
+    caseId: CASE,
+    range: FULL_RANGE,
+    head: HEAD,
+    mutateStatement: (st) => {
+      st.predicate.redactionCount = 3;
+    },
+  }),
+  { valid: false, firstFailure: "redactionCount" },
+);
 
 // ---- write everything ------------------------------------------------------
 
@@ -368,7 +458,27 @@ const manifest = {
 for (const v of vectors) {
   const file = `${v.name}.proofpack.json`;
   fs.writeFileSync(path.join(OUT, file), JSON.stringify(v.pkt, null, 2) + "\n");
-  manifest.vectors.push({ file, description: v.description, expect: v.expect });
+  manifest.vectors.push({
+    file,
+    description: v.description,
+    expect: v.expect,
+    ...(v.credit ? { credit: v.credit } : {}),
+  });
 }
 fs.writeFileSync(path.join(OUT, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 console.log(`wrote ${vectors.length} vectors + manifest.json to ${OUT}`);
+
+fs.mkdirSync(SC_OUT, { recursive: true });
+const scManifest = {
+  suite: "session-chain-draft-conformance",
+  spec: "predicate/session-chain.md (draft) — predicateType " + SC_TYPE,
+  keyId: KEY_ID,
+  note: "Instantiates the DRAFT in-toto session-chain predicate (RFC 3339 exportedAt). Subject shape mirrors testigo v0.1 pending the subject discussion in in-toto/attestation#554. Same published throwaway key as the main suite.",
+  vectors: scVectors.map((v) => {
+    const file = `${v.name}.proofpack.json`;
+    fs.writeFileSync(path.join(SC_OUT, file), JSON.stringify(v.pkt, null, 2) + "\n");
+    return { file, description: v.description, expect: v.expect };
+  }),
+};
+fs.writeFileSync(path.join(SC_OUT, "manifest.json"), JSON.stringify(scManifest, null, 2) + "\n");
+console.log(`wrote ${scVectors.length} session-chain vectors + manifest.json to ${SC_OUT}`);

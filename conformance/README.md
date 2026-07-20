@@ -25,8 +25,22 @@ a verifier must catch instead of stopping at "signature OK".
 | `invalid-digest` | step 4 | reject: subject digest ≠ packed events (signature valid!) |
 | `invalid-linkage` | step 5 | reject: chain broken at a stub (signature + digest valid!) |
 | `invalid-content-hash` | step 6 | reject: clean line doesn't recompute (linkage holds!) |
+| `invalid-redaction-count` | §2.3 / step 6 | reject: `redactionCount` ≠ redacted entries — **stubs are not redactions** |
 | `valid-timestamped` | §2.5 | valid; RFC 3161 token **declared** (real freetsa.org token) |
 | `invalid-timestamp` | §2.5 | **valid** (steps 1–6 pass) — but the timestamp MUST be reported as not matching, never as proof |
+| `valid-timestamp-stripped` † | §2.5 | valid, timestamp absent: stripping loses the existence proof but forges nothing |
+| `invalid-timestamp-transplant` † | §2.5 | valid, timestamp MUST report mismatch: a token spliced from another packet must never migrate |
+
+† donated by [@Rul1an](https://github.com/Rul1an) from the corpus cross in
+[#1](https://github.com/cyl-castillo/testigo/issues/1) — surfaced by adversarial
+mutation runs of an independently written checker (spec text only, 11/11
+verdict parity with this suite on first run).
+
+A **session-chain subset** ([`../predicate/vectors/`](../predicate/vectors/))
+instantiates the same rules under the draft in-toto predicate conventions
+(`in-toto.io/attestation/session-chain/v0.1` type URI, RFC 3339 `exportedAt`)
+so checkers of that predicate have bytes to run against. `verify.mjs` runs
+both sets.
 
 `invalid-timestamp` encodes the subtlest rule: the timestamp lives outside
 the signed envelope, so a bad one does not invalidate the packet — it

@@ -95,6 +95,14 @@
       }
     },
     {
+      "file": "invalid-redaction-count.proofpack.json",
+      "description": "Producer bug signed over: redactionCount does not equal the number of redacted entries (§2.3 — stubs are NOT redactions). Everything else verifies; the miscount misrepresents what was withheld. MUST fail §2.4 step 6.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "redactionCount"
+      }
+    },
+    {
       "file": "valid-timestamped.proofpack.json",
       "description": "Valid packet carrying a real RFC 3161 token over its signature (§2.5). Verifiers SHOULD report it as declared — and MUST NOT claim cryptographic token verification without a CMS stack.",
       "expect": {
@@ -121,6 +129,36 @@
         },
         "timestamp": "mismatch"
       }
+    },
+    {
+      "file": "valid-timestamp-stripped.proofpack.json",
+      "description": "The valid-timestamped packet with its timestamp member removed. Stripping loses the existence proof but forges nothing (§2.5): the packet MUST verify as valid with timestamp reported as absent — a verifier that fails a stripped packet is wrong.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      },
+      "credit": "Rul1an (corpus cross, cyl-castillo/testigo#1)"
+    },
+    {
+      "file": "invalid-timestamp-transplant.proofpack.json",
+      "description": "A valid packet carrying the timestamp member of a DIFFERENT valid packet — token and declared imprint are internally consistent with each other, but imprint a different signature. The splice a relying party actually encounters: the packet stays valid, the timestamp MUST be reported as not matching (it must never migrate between packets).",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "mismatch"
+      },
+      "credit": "Rul1an (corpus cross, cyl-castillo/testigo#1)"
     }
   ]
 }

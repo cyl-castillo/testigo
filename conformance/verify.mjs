@@ -95,6 +95,11 @@ export function verifyPacket(pkt) {
     prev = hash;
   }
 
+  // 6b. Declared redaction count must match the entries (§2.3: stubs are
+  // pruning, not redaction — a signed-over miscount misrepresents what was
+  // withheld).
+  if ((st.predicate?.redactionCount ?? 0) !== counts.redacted) return fail("redactionCount");
+
   // 8. Timestamp (§2.5): informative — declared or mismatching, never "verified".
   let timestamp = "none";
   const tsp = pkt.timestamp;
@@ -118,17 +123,7 @@ export function verifyPacket(pkt) {
 
 // ---- runner (only when executed directly — verifyPacket stays importable) ---
 
-function runSuite() {
-  const here = path.dirname(new URL(import.meta.url).pathname);
-  const arg = process.argv[2];
-
-  if (arg) {
-    const result = verifyPacket(JSON.parse(fs.readFileSync(arg, "utf8")));
-    console.log(JSON.stringify(result, null, 2));
-    process.exit(result.valid ? 0 : 1);
-  }
-
-  const dir = path.join(here, "vectors");
+function runManifest(dir, label) {
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
   let failures = 0;
   for (const v of manifest.vectors) {
@@ -149,7 +144,25 @@ function runSuite() {
       console.log(`ok    ${v.file}`);
     }
   }
-  console.log(failures ? `\n${failures} vector(s) failed` : `\nall ${manifest.vectors.length} vectors pass`);
+  console.log(failures ? `\n${failures} ${label} vector(s) failed\n` : `\nall ${manifest.vectors.length} ${label} vectors pass\n`);
+  return failures;
+}
+
+function runSuite() {
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  const arg = process.argv[2];
+
+  if (arg) {
+    const result = verifyPacket(JSON.parse(fs.readFileSync(arg, "utf8")));
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(result.valid ? 0 : 1);
+  }
+
+  let failures = runManifest(path.join(here, "vectors"), "conformance");
+  // The session-chain draft subset (predicate/vectors) exercises the same
+  // rules under the proposed in-toto predicate conventions.
+  const scDir = path.join(here, "..", "predicate", "vectors");
+  if (fs.existsSync(path.join(scDir, "manifest.json"))) failures += runManifest(scDir, "session-chain");
   process.exit(failures ? 1 : 0);
 }
 

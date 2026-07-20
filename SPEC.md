@@ -212,9 +212,19 @@ See [`schema/predicate-v0.1.schema.json`](schema/predicate-v0.1.schema.json).
 - **Redacted event** — `{ "line": "<line with secrets replaced>", "redacted": true }`.
   Redaction MUST NOT alter `seq`, `prevHash` or `hash`. Content hash
   recomputation is therefore impossible by design; linkage remains verifiable.
+  `redacted` is a **producer assertion**: it claims content was replaced, it
+  is not evidence that it was — a producer can mark an unaltered line
+  redacted, and no verifier can tell. Consumers MUST NOT read the flag (or
+  the count below) as more than the producer's own statement.
 - **Stub** — `{ "stub": { "seq", "prevHash", "hash", "kind" } }` — an event
   inside the exported range that belongs to another case. Stubs preserve chain
   linkage while sharing nothing else (Merkle-style pruning).
+
+`redactionCount` MUST equal the number of `events` entries carrying
+`redacted: true`. **Stubs are not redactions** — a stub prunes an out-of-case
+event to hashes, a redacted event keeps its frame with content replaced; the
+count covers only the latter. Verifiers MUST treat a mismatch as a
+verification failure (a signed-over miscount misrepresents what was withheld).
 
 `range.prevHashBefore` is the `hash` of the event immediately before
 `fromSeq` (`"genesis"` when `fromSeq` is 0), anchoring the segment's start.
@@ -236,7 +246,8 @@ Given a packet, a verifier MUST:
    entry (full, redacted, or stub): require `prevHash == prev`, then set
    `prev = hash`.
 6. For every full non-redacted entry, recompute the content hash per §1.5 and
-   require it to match.
+   require it to match. Require `redactionCount` to equal the number of
+   entries carrying `redacted: true` (§2.3 — stubs do not count).
 7. Report: signature validity, key id (with the out-of-band trust note),
    digest match, linkage result, counts of recomputed / redacted / stub
    entries. Redacted and stub entries MUST be visibly reported, not silently

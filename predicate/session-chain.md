@@ -174,8 +174,12 @@ when the producer publishes them).
 
 `redactionCount` _integer_, _required_
 
-Number of redactions applied before signing. MUST equal the count evident
-from `events`; a mismatch is a verification failure.
+MUST equal the number of `events` entries carrying `redacted: true`. **Stubs
+are not redactions** — a stub prunes an out-of-case event to hashes, a
+redacted event keeps its frame with content replaced; the count covers only
+the latter. A mismatch is a verification failure (a signed-over miscount
+misrepresents what was withheld). `redacted` itself is a producer assertion:
+it claims content was replaced, it is not evidence that it was.
 
 `events` _array_, _required_
 
@@ -205,7 +209,12 @@ published in the [Testigo conformance suite](https://github.com/cyl-castillo/tes
 
 ## Example
 
-See [`examples/demo.proofpack.json`](https://github.com/cyl-castillo/testigo/blob/main/examples/demo.proofpack.json)
+Draft conformance vectors instantiating **this** predicate (type URI + RFC
+3339 `exportedAt`) live in [`vectors/`](vectors/) with a verdict manifest —
+generated deterministically alongside the main
+[Testigo conformance suite](https://github.com/cyl-castillo/testigo/tree/main/conformance).
+
+See also [`examples/demo.proofpack.json`](https://github.com/cyl-castillo/testigo/blob/main/examples/demo.proofpack.json)
 for a complete signed packet (with a redacted event, a stub and an RFC 3161
 timestamp) verifiable in the
 [browser verifier](https://cyl-castillo.github.io/testigo/verifier/testigo-verifier.html),

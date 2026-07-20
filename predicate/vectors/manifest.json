@@ -1,0 +1,52 @@
+{
+  "suite": "session-chain-draft-conformance",
+  "spec": "predicate/session-chain.md (draft) — predicateType https://in-toto.io/attestation/session-chain/v0.1",
+  "keyId": "3097e2dee2cb4a34b53840cdb705aed71067c36f68db0e0f559c3f3fa043315f",
+  "note": "Instantiates the DRAFT in-toto session-chain predicate (RFC 3339 exportedAt). Subject shape mirrors testigo v0.1 pending the subject discussion in in-toto/attestation#554. Same published throwaway key as the main suite.",
+  "vectors": [
+    {
+      "file": "sc-valid-minimal.proofpack.json",
+      "description": "Full-ledger export under the session-chain predicate conventions: all checks pass.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "sc-valid-redacted-stub.proofpack.json",
+      "description": "Case export with redactions and a stub; redactionCount counts redacted entries only (stubs are pruning, not redaction).",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 2,
+          "redacted": 2,
+          "stubs": 1
+        },
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "sc-invalid-linkage.proofpack.json",
+      "description": "Producer bug signed over: broken chain linkage at a stub.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "linkage"
+      }
+    },
+    {
+      "file": "sc-invalid-redaction-count.proofpack.json",
+      "description": "Producer bug signed over: redactionCount counts the stub as a redaction (3 instead of 2).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "redactionCount"
+      }
+    }
+  ]
+}

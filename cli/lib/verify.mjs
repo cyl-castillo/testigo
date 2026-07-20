@@ -77,6 +77,8 @@ export function verifyPacket(pkt) {
     prev = hash;
   }
 
+  if ((st.predicate?.redactionCount ?? 0) !== counts.redacted) return fail("redactionCount");
+
   let timestamp = "none";
   const tsp = pkt.timestamp;
   if (tsp && tsp.type === "rfc3161") {

@@ -151,8 +151,9 @@ async function load(f) {
   else check("fail", "Hash chain linkage BROKEN.");
   if (contentFail === 0) check("ok", `Content hashes recomputed for ${recomputed} events.`);
   else check("fail", `${contentFail} event(s) failed content hash recomputation.`);
-  if (redacted > 0) check("warn", `${redacted} event(s) redacted before export — linkage verified, content hash not recomputable (by design).`);
+  if (redacted > 0) check("warn", `${redacted} event(s) redacted before export — linkage verified, content hash not recomputable (by design). Redaction is a producer assertion: it claims content was replaced, it is not evidence that it was.`);
   if (stubs > 0) check("warn", `${stubs} out-of-case event(s) included as linkage stubs (seq + hashes only).`);
+  if (linkageOk && (pred.redactionCount ?? 0) !== redacted) check("fail", `Declared redactionCount (${pred.redactionCount ?? 0}) does not match the ${redacted} redacted entries — the packet misrepresents what was withheld (stubs are not redactions).`);
 
   // 4. Trusted timestamp (RFC 3161), if present. Informative only: the
   // token's CMS signature is NOT validated here — pretending to verify ASN.1
@@ -194,8 +195,10 @@ async function load(f) {
   }
 
   // 5. Render.
+  // exportedAtMs (testigo v0.1, epoch ms) or exportedAt (session-chain draft, RFC 3339).
+  const exported = pred.exportedAtMs != null ? new Date(pred.exportedAtMs).toISOString() : (pred.exportedAt ?? "?");
   $("meta").textContent =
-    `case: ${pred.caseId ?? "(full ledger)"} · project: ${pred.project} · exported: ${new Date(pred.exportedAtMs).toISOString()} · generator: ${pred.generator} · range: ${pred.range?.fromSeq}–${pred.range?.toSeq} · key id: ${keyId}`;
+    `case: ${pred.caseId ?? "(full ledger)"} · project: ${pred.project} · exported: ${exported} · generator: ${pred.generator} · range: ${pred.range?.fromSeq}–${pred.range?.toSeq} · key id: ${keyId}`;
   const tbl = document.createElement("table");
   tbl.innerHTML = "<tr><th>seq</th><th>kind</th><th>actor</th><th>detail</th></tr>";
   for (const e of events) {
