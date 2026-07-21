@@ -127,9 +127,19 @@ independent vantage is the composing answer to that gap.
   pass that would not otherwise pass — policy is satisfied only by evidence
   that is present and verifiable; absence and redaction never satisfy a
   requirement.
-- The **subject digest** is sha256 (lowercase hex) over the UTF-8 bytes of
+- **Subject.** When the session produced artifacts (a resulting commit or
+  tree, evident from its turn diffs), `subject` carries those artifacts —
+  what a consumer matching provenance to artifacts expects. When it produced
+  none (audits, verifications, inspections — sessions whose evidentiary
+  value *is* the empty diff), `subject` carries the session's own
+  content-addressed descriptor: `name` = the case identifier, `digest.sha256`
+  = the **segment digest** — sha256 (lowercase hex) over the UTF-8 bytes of
   the compact JSON serialization of `predicate.events` exactly as embedded
-  (no whitespace, non-ASCII unescaped, member order preserved).
+  (no whitespace, non-ASCII unescaped, member order preserved). The segment
+  digest is also the publish-now-disclose-later commitment: what a producer
+  publishes ahead of disclosure is exactly what `subject` carries. A
+  statement is never subject-less. Wherever the segment digest appears
+  (`subject` or `evidence`), verifiers MUST recompute it and require a match.
 - Ledger lines are opaque byte strings from the predicate's point of view;
   their internal fields (including epoch-millisecond `ts` values) are
   producer content governed by the ledger format, not predicate fields —
@@ -187,6 +197,15 @@ The segment entries, in ledger order, each one of the three forms in the
 Model section. Linkage MUST hold across every entry: each entry's `prevHash`
 equals the previous entry's `hash`, starting from `range.prevHashBefore`.
 
+`evidence` _object (ResourceDescriptor)_, _optional_
+
+When `subject` carries produced artifacts, `evidence` holds the session
+segment's content address (`name` = the case identifier, `digest.sha256` =
+the segment digest per the Parsing Rules) — the SCAI-style evidence slot the
+recomputation reasons over. Omittable when `subject` already carries the
+segment descriptor (the artifact-less case); the two sit at different
+granularities and nothing is double-counted.
+
 **Event kinds** (open set; informative payloads): `prompt` (human intent,
 opens a turn), `approval_request` / `approval_decision` (human-in-the-loop
 oversight; decision payload `{approvalId, tool, decision: allow|deny|ask,
@@ -197,11 +216,17 @@ turn; carries the turn's file diff), `case_link`, `job_run`.
 
 ### Verification
 
-A verifier MUST: (1) verify the envelope signature; (2) recompute the
-subject digest over `predicate.events`; (3) walk linkage across all entries
-from `range.prevHashBefore`; (4) recompute content hashes for non-redacted
-full events; (5) report redacted and stub entries visibly — never silently
-pass them. A valid statement means exactly what the Model section's vantage
+A verifier of **this** predicate MUST: (0) require `predicateType` to equal
+this document's Type URI and `exportedAt` to parse as RFC 3339 — the two
+fields that distinguish this predicate from its testigo v0.1 parent (the
+vector subset guards both with signature-valid negatives, so a checker that
+skips them is caught); (1) verify the envelope signature; (2) recompute the
+segment digest and require it to match wherever it appears (`subject` or
+`evidence`); (3) walk linkage across all entries from
+`range.prevHashBefore`; (4) recompute content hashes for non-redacted full
+events, and require `redactionCount` to equal the entries carrying
+`redacted: true`; (5) report redacted and stub entries visibly — never
+silently pass them. A valid statement means exactly what the Model section's vantage
 paragraph says, and no more. Golden vectors — including
 valid-signature-around-internal-defect cases (signed-over broken digest,
 linkage and content hashes: a green signature is not a green verdict) — are
@@ -226,8 +251,14 @@ human approvals, empty turn diff — read-only, provably).
 
 Derives from the Testigo protocol predicate
 `https://github.com/cyl-castillo/testigo/attestation/v0.1`, which is shipping
-in two producers (agent-console ≥ 0.47.0; testigo-cli) and three verifier
-implementations. Differences in this proposal: the predicate type URI, and
-`exportedAt` (RFC 3339) replacing `exportedAtMs` (epoch milliseconds) per
-in-toto timestamp conventions. If vetted, Testigo's next format version
-adopts this predicate type as-is.
+in two producers (agent-console ≥ 0.47.0; testigo-cli) and — counting the
+independently authored spec-text-only checkers from the
+[corpus cross](https://github.com/cyl-castillo/testigo/issues/1) — five
+verifier implementations. Differences in this proposal: the predicate type
+URI, `exportedAt` (RFC 3339) replacing `exportedAtMs` (epoch milliseconds)
+per in-toto timestamp conventions, and the subject rule (produced artifacts
+when the session made something; the session's own content-addressed
+descriptor otherwise — settled in
+[in-toto/attestation#554](https://github.com/in-toto/attestation/issues/554);
+testigo v0.1 always used the segment descriptor). If vetted, Testigo's next
+format version adopts this predicate type as-is.

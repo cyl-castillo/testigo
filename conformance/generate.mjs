@@ -444,6 +444,23 @@ scAdd(
   }),
   { valid: false, firstFailure: "redactionCount" },
 );
+// Migration guards (Rul1an, testigo#1 part 2): the two fields that make
+// session-chain a distinct predicate must be GUARDED, not just instantiated —
+// these negatives are signature-valid on purpose (only the key holder can
+// produce them), so they separate a checker that enforces the migration from
+// one that silently ignores it.
+scAdd(
+  "sc-invalid-predicate-type",
+  "Signature-valid statement carrying the PARENT testigo v0.1 predicate type URI. A session-chain checker MUST reject it (spec §5: verifiers reject predicate types they don't implement); a checker that ignores predicateType passes it and is thereby caught.",
+  packet({ ...sc, predicateType: PREDICATE_TYPE, entries: BASE.map(full), range: FULL_RANGE, head: HEAD }),
+  { valid: false, firstFailure: "predicateType" },
+);
+scAdd(
+  "sc-invalid-exported-at",
+  "Signature-valid statement carrying exportedAtMs (epoch ms, the parent convention) instead of RFC 3339 exportedAt. A session-chain checker MUST reject it; a checker that ignores the field convention passes it and is thereby caught.",
+  packet({ ...sc, exportedAtRfc3339: false, entries: BASE.map(full), range: FULL_RANGE, head: HEAD }),
+  { valid: false, firstFailure: "exportedAt" },
+);
 
 // ---- write everything ------------------------------------------------------
 
@@ -473,7 +490,10 @@ const scManifest = {
   suite: "session-chain-draft-conformance",
   spec: "predicate/session-chain.md (draft) — predicateType " + SC_TYPE,
   keyId: KEY_ID,
-  note: "Instantiates the DRAFT in-toto session-chain predicate (RFC 3339 exportedAt). Subject shape mirrors testigo v0.1 pending the subject discussion in in-toto/attestation#554. Same published throwaway key as the main suite.",
+  // What a checker of THIS predicate must enforce on top of the packet
+  // rules — the migration-guard negatives test exactly these.
+  enforce: { predicateType: SC_TYPE, exportedAt: "rfc3339" },
+  note: "Instantiates the DRAFT in-toto session-chain predicate (RFC 3339 exportedAt). Sessions here produced no artifacts, so subjects carry the session's own content-addressed descriptor per the draft's subject rule. Same published throwaway key as the main suite. Migration-guard negatives credit: Rul1an (cyl-castillo/testigo#1).",
   vectors: scVectors.map((v) => {
     const file = `${v.name}.proofpack.json`;
     fs.writeFileSync(path.join(SC_OUT, file), JSON.stringify(v.pkt, null, 2) + "\n");

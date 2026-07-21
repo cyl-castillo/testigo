@@ -39,8 +39,12 @@ verdict parity with this suite on first run).
 A **session-chain subset** ([`../predicate/vectors/`](../predicate/vectors/))
 instantiates the same rules under the draft in-toto predicate conventions
 (`in-toto.io/attestation/session-chain/v0.1` type URI, RFC 3339 `exportedAt`)
-so checkers of that predicate have bytes to run against. `verify.mjs` runs
-both sets.
+so checkers of that predicate have bytes to run against — including two
+**migration-guard negatives** † (signature-valid statements carrying the
+parent type URI / `exportedAtMs`): they separate a checker that enforces the
+migration from one that silently ignores it, and only the key holder can
+produce them. The manifest's `enforce` block states what a checker of that
+predicate must reject. `verify.mjs` runs both sets.
 
 `invalid-timestamp` encodes the subtlest rule: the timestamp lives outside
 the signed envelope, so a bad one does not invalidate the packet — it

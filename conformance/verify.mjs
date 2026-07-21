@@ -21,8 +21,15 @@ const sha256hex = (buf) => crypto.createHash("sha256").update(buf).digest("hex")
 /// Verify one packet per §2.4. Returns:
 ///   { valid, firstFailure, counts: {entries, recomputed, redacted, stubs},
 ///     timestamp: "none" | "declared" | "mismatch", keyId }
-/// firstFailure ∈ format | keyid | signature | payload | digest | linkage | contentHash
-export function verifyPacket(pkt) {
+/// firstFailure ∈ format | keyid | signature | payload | predicateType |
+///   exportedAt | digest | linkage | contentHash | redactionCount
+///
+/// `enforce` turns this into a checker of a SPECIFIC predicate (a manifest's
+/// `enforce` block): { predicateType } requires an exact type URI (spec §5 —
+/// verifiers reject predicate types they don't implement); { exportedAt:
+/// "rfc3339" } requires the session-chain time convention. The migration-
+/// guard vectors exist to catch checkers that skip these.
+export function verifyPacket(pkt, enforce = {}) {
   const fail = (code) => ({ valid: false, firstFailure: code });
 
   // 1. Format.
@@ -61,6 +68,13 @@ export function verifyPacket(pkt) {
   } catch {
     return fail("payload");
   }
+  if (enforce.predicateType && st.predicateType !== enforce.predicateType)
+    return fail("predicateType");
+  if (
+    enforce.exportedAt === "rfc3339" &&
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(st.predicate?.exportedAt ?? "")
+  )
+    return fail("exportedAt");
   const events = st.predicate?.events ?? [];
   const want = st.subject?.[0]?.digest?.sha256 ?? "";
   if (sha256hex(Buffer.from(JSON.stringify(events), "utf8")) !== want) return fail("digest");
@@ -127,7 +141,7 @@ function runManifest(dir, label) {
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
   let failures = 0;
   for (const v of manifest.vectors) {
-    const got = verifyPacket(JSON.parse(fs.readFileSync(path.join(dir, v.file), "utf8")));
+    const got = verifyPacket(JSON.parse(fs.readFileSync(path.join(dir, v.file), "utf8")), manifest.enforce ?? {});
     const problems = [];
     if (got.valid !== v.expect.valid) problems.push(`valid: got ${got.valid}, want ${v.expect.valid}`);
     if (!v.expect.valid && got.firstFailure !== v.expect.firstFailure)

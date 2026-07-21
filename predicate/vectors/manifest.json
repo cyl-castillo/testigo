@@ -2,7 +2,11 @@
   "suite": "session-chain-draft-conformance",
   "spec": "predicate/session-chain.md (draft) — predicateType https://in-toto.io/attestation/session-chain/v0.1",
   "keyId": "3097e2dee2cb4a34b53840cdb705aed71067c36f68db0e0f559c3f3fa043315f",
-  "note": "Instantiates the DRAFT in-toto session-chain predicate (RFC 3339 exportedAt). Subject shape mirrors testigo v0.1 pending the subject discussion in in-toto/attestation#554. Same published throwaway key as the main suite.",
+  "enforce": {
+    "predicateType": "https://in-toto.io/attestation/session-chain/v0.1",
+    "exportedAt": "rfc3339"
+  },
+  "note": "Instantiates the DRAFT in-toto session-chain predicate (RFC 3339 exportedAt). Sessions here produced no artifacts, so subjects carry the session's own content-addressed descriptor per the draft's subject rule. Same published throwaway key as the main suite. Migration-guard negatives credit: Rul1an (cyl-castillo/testigo#1).",
   "vectors": [
     {
       "file": "sc-valid-minimal.proofpack.json",
@@ -46,6 +50,22 @@
       "expect": {
         "valid": false,
         "firstFailure": "redactionCount"
+      }
+    },
+    {
+      "file": "sc-invalid-predicate-type.proofpack.json",
+      "description": "Signature-valid statement carrying the PARENT testigo v0.1 predicate type URI. A session-chain checker MUST reject it (spec §5: verifiers reject predicate types they don't implement); a checker that ignores predicateType passes it and is thereby caught.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicateType"
+      }
+    },
+    {
+      "file": "sc-invalid-exported-at.proofpack.json",
+      "description": "Signature-valid statement carrying exportedAtMs (epoch ms, the parent convention) instead of RFC 3339 exportedAt. A session-chain checker MUST reject it; a checker that ignores the field convention passes it and is thereby caught.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "exportedAt"
       }
     }
   ]
