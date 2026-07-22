@@ -44,7 +44,19 @@ so checkers of that predicate have bytes to run against — including two
 parent type URI / `exportedAtMs`): they separate a checker that enforces the
 migration from one that silently ignores it, and only the key holder can
 produce them. The manifest's `enforce` block states what a checker of that
-predicate must reject. `verify.mjs` runs both sets.
+predicate must reject — **binding on what the corpus asserts, informative as
+a checker input**: derive your expectations from the spec text and
+cross-check the block against that reading (a checker that obeys the block
+alone is trusting the producer's declaration, the exact trust the negatives
+exist to remove). `verify.mjs` runs both sets.
+
+Three **signed-over mutation vectors** † (`invalid-injected-event-signature`,
+`invalid-duplicated-entry-signature`, `invalid-reserialized-line-signature`)
+build internally consistent statements — digest, linkage and counts all
+repaired — wearing a stale conformance-key signature: they isolate the
+envelope check, catching a verifier that trusts the cheaper layers but skips
+or misorders the signature. The third also pins byte-exactness: a checker
+that canonicalizes lines before hashing cannot distinguish it.
 
 `invalid-timestamp` encodes the subtlest rule: the timestamp lives outside
 the signed envelope, so a bad one does not invalidate the packet — it

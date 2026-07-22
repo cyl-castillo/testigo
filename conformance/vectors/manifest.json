@@ -103,6 +103,33 @@
       }
     },
     {
+      "file": "invalid-injected-event-signature.proofpack.json",
+      "description": "A self-consistent event is injected and digest, linkage, seq numbering, range and redactionCount are all repaired, so every non-signature check passes; the mutator holds no key, so the conformance-key signature is stale. MUST reject at signature — a checker that verifies digest and linkage but skips the envelope wrongly accepts.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "signature"
+      },
+      "credit": "Rul1an (mutation donation, cyl-castillo/testigo#1)"
+    },
+    {
+      "file": "invalid-duplicated-entry-signature.proofpack.json",
+      "description": "An interior entry is duplicated with the chain re-linked around it — the completeness-attack sibling of injection: a checker relying on linkage continuity alone accepts a padded ledger. Signature stale; MUST reject at signature.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "signature"
+      },
+      "credit": "Rul1an (mutation donation, cyl-castillo/testigo#1)"
+    },
+    {
+      "file": "invalid-reserialized-line-signature.proofpack.json",
+      "description": "One embedded line re-serialized to byte-different but semantically identical JSON, subject digest repaired to the new bytes. Guards byte-exact payload binding (§1.5): a checker that canonicalizes lines before hashing cannot tell the difference — the signature, bound to the pre-mutation bytes, can. MUST reject at signature.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "signature"
+      },
+      "credit": "Rul1an (mutation donation, cyl-castillo/testigo#1)"
+    },
+    {
       "file": "valid-timestamped.proofpack.json",
       "description": "Valid packet carrying a real RFC 3161 token over its signature (§2.5). Verifiers SHOULD report it as declared — and MUST NOT claim cryptographic token verification without a CMS stack.",
       "expect": {

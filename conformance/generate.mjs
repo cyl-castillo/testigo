@@ -152,7 +152,7 @@ const redactLine = (ev, from, to) => ({ line: ev.line.replace(from, to), redacte
 // ---- the base ledger shared by most vectors -------------------------------
 
 const CASE = "jira:CONF-1";
-const BASE = ledger([
+const BASE_SPECS = [
   { caseId: CASE, kind: "case_link", actor: "system", termId: "t-1", payload: {} },
   {
     caseId: CASE,
@@ -179,7 +179,8 @@ const BASE = ledger([
     termId: "t-1",
     payload: { filesChanged: [] },
   },
-]);
+];
+const BASE = ledger(BASE_SPECS);
 const HEAD = { seq: BASE.at(-1).seq, hash: BASE.at(-1).hash };
 const FULL_RANGE = { fromSeq: 0, toSeq: 4, prevHashBefore: "genesis" };
 
@@ -208,10 +209,12 @@ const vectors = [];
 const add = (name, description, pkt, expect, credit) =>
   vectors.push({ name, description, pkt, expect, credit });
 
+const VALID_MINIMAL = packet({ entries: BASE.map(full), range: FULL_RANGE, head: HEAD });
+
 add(
   "valid-minimal",
   "Full-ledger export, every event clean: all checks pass, every content hash recomputes.",
-  packet({ entries: BASE.map(full), range: FULL_RANGE, head: HEAD }),
+  VALID_MINIMAL,
   { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "none" },
 );
 
@@ -330,6 +333,63 @@ add(
     },
   }),
   { valid: false, firstFailure: "redactionCount" },
+);
+
+// ---- signed-over mutation vectors (ported from Rul1an's donation) ----------
+// Ported as generator code from the gist in cyl-castillo/testigo#1 so the
+// corpus stays single-generator deterministic; the gist remains the
+// reference. Each builds an INTERNALLY CONSISTENT statement (digest,
+// linkage, seqs, range, redactionCount all repaired) and then pairs it with
+// valid-minimal's signature — stale by construction, since the mutator holds
+// no key. They catch a checker that trusts digest and linkage but skips or
+// misorders the envelope check.
+
+/// An internally consistent statement wearing valid-minimal's (stale) signature.
+function staleSigned(entries, range, head) {
+  const p = packet({ entries, range, head });
+  p.envelope.signatures = VALID_MINIMAL.envelope.signatures;
+  return p;
+}
+
+add(
+  "invalid-injected-event-signature",
+  "A self-consistent event is injected and digest, linkage, seq numbering, range and redactionCount are all repaired, so every non-signature check passes; the mutator holds no key, so the conformance-key signature is stale. MUST reject at signature — a checker that verifies digest and linkage but skips the envelope wrongly accepts.",
+  (() => {
+    const specs = [...BASE_SPECS.slice(0, 2), {
+      caseId: CASE, kind: "tool_result", actor: "agent", turnId: "turn-1", termId: "t-1",
+      payload: { tool: "Bash", excerpt: "injected", truncated: false },
+    }, ...BASE_SPECS.slice(2)];
+    const l = ledger(specs);
+    return staleSigned(l.map(full), { fromSeq: 0, toSeq: 5, prevHashBefore: "genesis" }, { seq: 5, hash: l.at(-1).hash });
+  })(),
+  { valid: false, firstFailure: "signature" },
+  "Rul1an (mutation donation, cyl-castillo/testigo#1)",
+);
+
+add(
+  "invalid-duplicated-entry-signature",
+  "An interior entry is duplicated with the chain re-linked around it — the completeness-attack sibling of injection: a checker relying on linkage continuity alone accepts a padded ledger. Signature stale; MUST reject at signature.",
+  (() => {
+    const specs = [...BASE_SPECS.slice(0, 4), BASE_SPECS[3], BASE_SPECS[4]];
+    const l = ledger(specs);
+    return staleSigned(l.map(full), { fromSeq: 0, toSeq: 5, prevHashBefore: "genesis" }, { seq: 5, hash: l.at(-1).hash });
+  })(),
+  { valid: false, firstFailure: "signature" },
+  "Rul1an (mutation donation, cyl-castillo/testigo#1)",
+);
+
+add(
+  "invalid-reserialized-line-signature",
+  "One embedded line re-serialized to byte-different but semantically identical JSON, subject digest repaired to the new bytes. Guards byte-exact payload binding (§1.5): a checker that canonicalizes lines before hashing cannot tell the difference — the signature, bound to the pre-mutation bytes, can. MUST reject at signature.",
+  (() => {
+    const entries = BASE.map(full);
+    const v = JSON.parse(entries[1].line);
+    const { seq, ts, ...rest } = v;
+    entries[1] = { line: JSON.stringify({ ts, seq, ...rest }), redacted: false }; // ts/seq swapped: same JSON semantics, different bytes
+    return staleSigned(entries, FULL_RANGE, HEAD);
+  })(),
+  { valid: false, firstFailure: "signature" },
+  "Rul1an (mutation donation, cyl-castillo/testigo#1)",
 );
 
 // ---- timestamp vectors (need the one-time token fixture) -------------------
@@ -491,7 +551,12 @@ const scManifest = {
   spec: "predicate/session-chain.md (draft) — predicateType " + SC_TYPE,
   keyId: KEY_ID,
   // What a checker of THIS predicate must enforce on top of the packet
-  // rules — the migration-guard negatives test exactly these.
+  // rules — the migration-guard negatives test exactly these. BINDING on
+  // what this corpus asserts; INFORMATIVE as a checker input: a checker
+  // derives its expectations from the spec text and cross-checks this block
+  // against that reading — one that obeys the block alone is back to
+  // trusting the producer's declaration, the exact trust the negatives
+  // exist to remove.
   enforce: { predicateType: SC_TYPE, exportedAt: "rfc3339" },
   note: "Instantiates the DRAFT in-toto session-chain predicate (RFC 3339 exportedAt). Sessions here produced no artifacts, so subjects carry the session's own content-addressed descriptor per the draft's subject rule. Same published throwaway key as the main suite. Migration-guard negatives credit: Rul1an (cyl-castillo/testigo#1).",
   vectors: scVectors.map((v) => {
