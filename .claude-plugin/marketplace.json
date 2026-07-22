@@ -1,0 +1,17 @@
+{
+  "name": "testigo",
+  "owner": { "name": "Carlos Castillo" },
+  "description": "Testigo — From Intent to Proof. Verifiable evidence for work done by humans and AI agents together.",
+  "plugins": [
+    {
+      "name": "testigo",
+      "displayName": "Testigo Witness",
+      "source": "./cli",
+      "description": "Ambient intent-to-proof witnessing for Claude Code sessions: hash-chained local evidence ledger, case linking, and signed proof packets verifiable in any browser. Zero dependencies (Node ≥ 20). Captures prompts, tool calls, results and turn ends; approvals are honestly out of scope (hooks can't see the permission dialog).",
+      "version": "0.1.0",
+      "license": "MIT",
+      "category": "security",
+      "keywords": ["provenance", "attestation", "in-toto", "evidence", "audit", "compliance", "eu-ai-act"]
+    }
+  ]
+}

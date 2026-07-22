@@ -1,0 +1,11 @@
+{
+  "name": "testigo",
+  "displayName": "Testigo Witness",
+  "version": "0.1.0",
+  "description": "Ambient intent-to-proof witnessing for Claude Code sessions: every prompt, tool call, result and turn end lands in a local hash-chained evidence ledger, exportable as signed proof packets anyone can verify in a browser. Witness, not gatekeeper — records, never blocks.",
+  "author": { "name": "Carlos Castillo", "url": "https://github.com/cyl-castillo" },
+  "homepage": "https://github.com/cyl-castillo/testigo",
+  "repository": "https://github.com/cyl-castillo/testigo",
+  "license": "MIT",
+  "keywords": ["provenance", "attestation", "in-toto", "evidence", "audit", "compliance", "eu-ai-act"]
+}

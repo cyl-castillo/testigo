@@ -4,6 +4,21 @@ Ambient intent-to-proof capture for [Claude Code](https://claude.com/claude-code
 speaking the [Testigo protocol](../SPEC.md). Zero dependencies, Node ≥ 20.
 *Witness, not gatekeeper*: it records; it never orchestrates or blocks.
 
+## Install as a Claude Code plugin (recommended)
+
+```
+/plugin marketplace add cyl-castillo/testigo
+/plugin install testigo@testigo
+```
+
+Witnessing starts with your next session — the plugin wires the four capture
+hooks automatically and adds three commands: `/testigo:status` (chain health
++ recent evidence), `/testigo:link` (bind the session to a case) and
+`/testigo:export` (pre-sign review, then sign). Use the plugin **or**
+`testigo init` below, not both — doubling the hooks records every event twice.
+
+## Or install the hooks by hand
+
 ```
 cd your-project
 node /path/to/testigo/cli/bin/testigo.mjs init

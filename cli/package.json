@@ -4,7 +4,7 @@
   "description": "Witness CLI for the Testigo protocol: ambient intent-to-proof capture from Claude Code hooks, hash-chained ledger, signed proof-packet export.",
   "type": "module",
   "bin": { "testigo": "./bin/testigo.mjs" },
-  "files": ["bin", "lib", "README.md"],
+  "files": ["bin", "lib", "README.md", ".claude-plugin", "hooks", "commands"],
   "scripts": { "test": "node test.mjs" },
   "engines": { "node": ">=20" },
   "license": "MIT",
