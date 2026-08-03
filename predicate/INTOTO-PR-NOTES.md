@@ -53,6 +53,44 @@ agent-decision on `decision`/`reason`.
   NOT answerable from this predicate alone — compose with observed-effect
   evidence for that.
 
+## Conformance evidence (the bar #554 set for vetting a predicate)
+
+The thread converged on a bar stricter than "the author's verifier passes":
+a corpus owned by the spec, plus **at least two independently authored
+checkers** in parity — dependency-freedom is not assumption-freedom, and
+checkers sharing an author share its blind spots.
+
+State of that evidence as of `e19a522`:
+
+- **Corpus**: 17 parent vectors ([`conformance/`](../conformance/)) + 6
+  session-chain vectors ([`vectors/`](vectors/)) instantiating this
+  predicate's conventions; produced by one deterministic generator
+  (`generate.mjs`, fixed timestamps, deterministic Ed25519 — regeneration is
+  byte-identical), so the corpus can be re-homed under the spec repo without
+  reproducibility loss.
+- **Checker A**: `conformance/verify.mjs` (Node, zero deps) plus the browser
+  verifier — same author as the spec.
+- **Checker B**: written independently by
+  [@Rul1an](https://github.com/Rul1an) from the spec text only, without
+  reading this repo's code (Python stdlib, Ed25519 from RFC 8032). Parity:
+  **11/11** on the parent suite at first run, **4/4** on the session-chain
+  subset, and **17/17 + 6/6** after both sides' corrections landed.
+- **What the cross actually produced** (parity alone would have hidden it):
+  `redactionCount` was underspecified (normative in the draft, example-only
+  in SPEC) and the migration fields (type URI, `exportedAt`) were
+  instantiated but not guarded. Both were fixed in the spec, and the
+  corresponding negatives exist because only the key holder can sign them.
+- **Negatives separate lax from conforming**: three signed-over mutation
+  vectors donated by Checker B's adversarial runs (injected event,
+  duplicated entry, reserialized line) plus the two migration guards. The
+  reserialized-line vector pins byte-exactness: a checker that canonicalizes
+  before hashing cannot distinguish it.
+
+Cross log: [testigo#1](https://github.com/cyl-castillo/testigo/issues/1).
+If this goes in as a PR, @Rul1an is the second author of the independent
+checker and co-signatory of the design decisions folded in from the cross
+(subject rule, `enforce` semantics).
+
 ## Submission checklist (per new_predicate_guidelines.md)
 
 - [ ] `spec/predicates/session-chain.md` (adapted from this repo's draft)
