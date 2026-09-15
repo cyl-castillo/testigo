@@ -26,6 +26,9 @@ a verifier must catch instead of stopping at "signature OK".
 | `invalid-linkage` | step 5 | reject: chain broken at a stub (signature + digest valid!) |
 | `invalid-content-hash` | step 6 | reject: clean line doesn't recompute (linkage holds!) |
 | `invalid-redaction-count` | §2.3 / step 6 | reject: `redactionCount` ≠ redacted entries — **stubs are not redactions** |
+| `valid-process-context` | §2.6 | valid; predicate carries provider / contextArtifacts / session window / owner derived from the events — a verifier that rejects unknown predicate fields is wrong |
+| `invalid-timestamp-window` | §2.6 / step 6c | reject: `startTimestamp` one second off the first line's `ts` (signature valid!) — the window is a claim about the hashed lines and MUST be checked |
+| `invalid-process-context-shape` | §2.6 / step 6c | reject: `provider.harness` without a name — optional fields, but well-formed when present |
 | `valid-timestamped` | §2.5 | valid; RFC 3161 token **declared** (real freetsa.org token) |
 | `invalid-timestamp` | §2.5 | **valid** (steps 1–6 pass) — but the timestamp MUST be reported as not matching, never as proof |
 | `valid-timestamp-stripped` † | §2.5 | valid, timestamp absent: stripping loses the existence proof but forges nothing |
@@ -38,6 +41,7 @@ verdict parity with this suite on first run).
 
 A **session-chain subset** ([`../predicate/vectors/`](../predicate/vectors/))
 instantiates the same rules under the draft in-toto predicate conventions
+(plus `sc-valid-process-context`, the §2.6 members under those conventions)
 (`in-toto.io/attestation/session-chain/v0.1` type URI, RFC 3339 `exportedAt`)
 so checkers of that predicate have bytes to run against — including two
 **migration-guard negatives** † (signature-valid statements carrying the

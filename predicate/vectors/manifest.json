@@ -53,6 +53,20 @@
       }
     },
     {
+      "file": "sc-valid-process-context.proofpack.json",
+      "description": "Session-chain statement carrying the additive process context (provider, contextArtifacts, session window, owner); the window equals the first/last non-stub line's ts.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
       "file": "sc-invalid-predicate-type.proofpack.json",
       "description": "Signature-valid statement carrying the PARENT testigo v0.1 predicate type URI. A session-chain checker MUST reject it (spec §5: verifiers reject predicate types they don't implement); a checker that ignores predicateType passes it and is thereby caught.",
       "expect": {

@@ -17,7 +17,7 @@ const HELP = `testigo — witness CLI for the Testigo protocol (spec: github.com
 usage: testigo <command> [options]
 
   init [--user] [--print] [--command CMD]
-        Install the capture hooks into Claude Code settings
+        Install the six capture hooks into Claude Code settings
         (./.claude/settings.json; --user targets ~/.claude/settings.json;
         --print only shows the JSON). Existing settings are merged, a .bak
         is written first.
@@ -32,16 +32,23 @@ usage: testigo <command> [options]
   verify [--root DIR]
         Walk the project ledger's hash chain.
   export [--case ID] [--out DIR] [--redact s1,s2] [--tsa URL] [--yes] [--root DIR]
+         [--owner LOGIN|EMAIL] [--model PROVIDER/NAME]
         Review-then-sign a proof packet. Without --yes it prints the
         pre-sign review (everything the packet would contain) and stops —
         nothing leaves unreviewed. --tsa requests an RFC 3161 timestamp
         (e.g. https://freetsa.org/tsr; sends the TSA a signature hash only).
+        The packet declares the process context (spec §2.6) derived from
+        the ledger: harness, engine, models seen, instruction-file digests,
+        session window. --owner (default: git user.email) and --model (the
+        model you requested) are declared on top.
   verify-packet <file>
         Verify any proof packet per spec §2.4 (offline).
   key   Show this machine's signing key id + public key (created on first use).
 
-Captured via hooks: prompts, tool calls, tool results, turn ends — bound by
-the engine's session id. NOT captured: human approval decisions (Claude Code
+Captured via hooks: session starts (engine + model when sent), prompts (with
+the digests of CLAUDE.md / .claude/CLAUDE.md / AGENTS.md present in cwd),
+tool calls, tool results, model switches, turn ends — bound by the engine's
+session id. NOT captured: human approval decisions (Claude Code
 hooks don't expose the permission dialog); producers in the permission path,
 like agent-console, add those.`;
 
@@ -125,7 +132,11 @@ switch (cmd) {
             ? `tool=${p.tool}`
             : e.kind === "case_link"
               ? e.caseId
-              : "";
+              : e.kind === "session_start"
+                ? `${p.engine ?? ""}${p.model ? " model=" + p.model : ""}`
+                : e.kind === "model_switch"
+                  ? `${p.from ?? "?"} → ${p.to ?? "?"}`
+                  : "";
       console.log(
         `${String(e.seq).padStart(4)}  ${new Date(e.ts).toISOString()}  ${e.caseId.padEnd(20)} ${e.kind.padEnd(12)} ${e.actor.padEnd(6)} ${detail}`,
       );
@@ -171,6 +182,8 @@ switch (cmd) {
       .filter(Boolean)
       .map((s) => parseInt(s, 10));
     const tsa = opt("--tsa", null);
+    const owner = opt("--owner", null);
+    const model = opt("--model", null);
     if (!flag("--yes")) {
       // Pre-sign review: everything the packet would contain, so the human
       // can mark events for redaction BEFORE anything is signed.
@@ -187,7 +200,7 @@ switch (cmd) {
       );
       break;
     }
-    const sum = await exportPacket(ROOT, { caseId, outDir, redactSeqs, tsa });
+    const sum = await exportPacket(ROOT, { caseId, outDir, redactSeqs, tsa, owner, model });
     console.log(`packet:   ${sum.path}`);
     console.log(`verifier: ${sum.verifier}`);
     console.log(

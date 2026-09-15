@@ -104,6 +104,10 @@ function packet({
   // Session-chain draft convention (predicate/session-chain.md): RFC 3339
   // exportedAt instead of testigo v0.1's epoch-ms exportedAtMs.
   exportedAtRfc3339 = false,
+  // Process context (§2.6, additive): provider / contextArtifacts /
+  // startTimestamp / endTimestamp / owner. Spread in place so packets
+  // without it keep byte-identical statements.
+  extra = null,
   mutateStatement, // producer bug: defect signed over
   mutatePacket, // transport tamper: defect after signing
 }) {
@@ -125,6 +129,7 @@ function packet({
       range,
       ledgerHead: head,
       redactionCount,
+      ...(extra ?? {}),
       events: entries,
     },
   };
@@ -392,6 +397,77 @@ add(
   "Rul1an (mutation donation, cyl-castillo/testigo#1)",
 );
 
+// ---- process context vectors (§2.6) ----------------------------------------
+// A ledger whose events carry what the predicate-level fields derive from:
+// a session_start with the model, a prompt with the instruction-file digest
+// it ran under. The predicate then declares provider / contextArtifacts /
+// session window / owner. The window is the one VERIFIABLE claim among them
+// (it must equal what the hashed lines carry); the rest are producer
+// assertions that must at least be well-formed.
+
+const CTX_INSTRUCTIONS_SHA = sha256hex(Buffer.from("conformance instructions\n", "utf8"));
+const CTX = ledger([
+  { caseId: CASE, kind: "session_start", actor: "system", termId: "t-1", payload: { engine: "claude-code", model: "claude-opus-4-8" } },
+  { caseId: CASE, kind: "case_link", actor: "system", termId: "t-1", payload: {} },
+  {
+    caseId: CASE,
+    kind: "prompt",
+    actor: "human",
+    turnId: "turn-1",
+    termId: "t-1",
+    payload: { prompt: "add the rate limiter", cwd: "/proj", context: [{ uri: "CLAUDE.md", sha256: CTX_INSTRUCTIONS_SHA }] },
+  },
+  { caseId: CASE, kind: "tool_result", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { tool: "Write", excerpt: "ok", truncated: false } },
+  { caseId: CASE, kind: "turn_end", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { filesChanged: [{ status: "M", path: "src/limit.py" }] } },
+]);
+const CTX_RANGE = { fromSeq: 0, toSeq: 4, prevHashBefore: "genesis" };
+const CTX_HEAD = { seq: 4, hash: CTX.at(-1).hash };
+const iso = (ms) => new Date(ms).toISOString();
+const CTX_EXTRA = {
+  provider: {
+    harness: { name: "testigo-conformance", version: "1.0" },
+    agent: { id: "claude-code", name: "Claude Code" },
+    languageModels: [{ resolved: "claude-opus-4-8" }],
+  },
+  contextArtifacts: [{ tags: ["instructions"], uri: "CLAUDE.md", digest: { sha256: CTX_INSTRUCTIONS_SHA } }],
+  startTimestamp: iso(CTX[0].ts),
+  endTimestamp: iso(CTX.at(-1).ts),
+  owner: "conformance@example.com",
+};
+
+add(
+  "valid-process-context",
+  "Predicate carries the §2.6 process context (provider, contextArtifacts, session window, owner) derived from the events; the window equals the first/last non-stub line's ts. Valid — a verifier that rejects unknown predicate fields is wrong.",
+  packet({ entries: CTX.map(full), caseId: CASE, range: CTX_RANGE, head: CTX_HEAD, extra: CTX_EXTRA }),
+  { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "none" },
+);
+
+add(
+  "invalid-timestamp-window",
+  "Producer bug signed over: startTimestamp is one second later than the first line's ts. The window is a claim about the hashed events, so it is checkable — and MUST be checked when present (§2.6). Everything else verifies.",
+  packet({
+    entries: CTX.map(full),
+    caseId: CASE,
+    range: CTX_RANGE,
+    head: CTX_HEAD,
+    extra: { ...CTX_EXTRA, startTimestamp: iso(CTX[0].ts + 1000) },
+  }),
+  { valid: false, firstFailure: "timestamps" },
+);
+
+add(
+  "invalid-process-context-shape",
+  "Producer bug signed over: provider.harness has no name. Optional fields are optional; present ones MUST be well-formed (§2.6) — a policy gate allow-listing harnesses cannot pass on a nameless one.",
+  packet({
+    entries: CTX.map(full),
+    caseId: CASE,
+    range: CTX_RANGE,
+    head: CTX_HEAD,
+    extra: { ...CTX_EXTRA, provider: { harness: { version: "1.0" } } },
+  }),
+  { valid: false, firstFailure: "processContext" },
+);
+
 // ---- timestamp vectors (need the one-time token fixture) -------------------
 
 if (fs.existsSync(TOKEN_FIXTURE)) {
@@ -503,6 +579,12 @@ scAdd(
     },
   }),
   { valid: false, firstFailure: "redactionCount" },
+);
+scAdd(
+  "sc-valid-process-context",
+  "Session-chain statement carrying the additive process context (provider, contextArtifacts, session window, owner); the window equals the first/last non-stub line's ts.",
+  packet({ ...sc, entries: CTX.map(full), caseId: CASE, range: CTX_RANGE, head: CTX_HEAD, extra: CTX_EXTRA }),
+  { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "none" },
 );
 // Migration guards (Rul1an, testigo#1 part 2): the two fields that make
 // session-chain a distinct predicate must be GUARDED, not just instantiated —

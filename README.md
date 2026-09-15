@@ -125,7 +125,11 @@ selectively later (per-event redaction keeps the chain verifiable).
 
 ## Status
 
-- Spec: v0.1 (draft — field names and predicate type are stable within v0.1).
+- Spec: v0.2 (draft; additive over v0.1 — the process context of §2.6:
+  provider, context artifacts, session window, owner — mirrors the FINOS
+  Agentic Process Evidence shapes; packet format and predicate type URI
+  unchanged, see [docs/ape-mapping.md](docs/ape-mapping.md)).
+- Spec v0.1: field names and predicate type are stable within v0.1.
 - Reference implementation: shipping since agent-console v0.45.0 (ledger),
   v0.46.0 (turn results), v0.47.0 (packets + verifier), v0.48.0 (timelines +
   commit trailers), v0.49.0 (pre-sign redaction review — the published case
