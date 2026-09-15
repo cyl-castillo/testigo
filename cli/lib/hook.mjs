@@ -13,9 +13,34 @@
 // captured this way contain intent, actions, results and turn closure;
 // approval_request/approval_decision events come from producers that sit in
 // the permission path (e.g. agent-console).
+//
+// Process context (§2.6) is captured INTO the chain, not bolted on at
+// export: `session_start` carries the engine and (when Claude Code sends it)
+// the model, `model_switch` carries a mid-session change, and every prompt
+// carries the digests of the instruction files present in its cwd at that
+// moment. The export derives the predicate-level fields from these hashed
+// lines, so what the packet declares about the run is what the run recorded.
 
-import { append, bounded, caseFor, readState, writeState } from "./ledger.mjs";
+import { append, bounded, caseFor, readState, sha256hex, writeState } from "./ledger.mjs";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+
+/// Instruction files an agent reads implicitly. Hashed at prompt time —
+/// the bytes the agent actually ran under, not whatever is on disk later.
+export const INSTRUCTION_FILES = ["CLAUDE.md", ".claude/CLAUDE.md", "AGENTS.md"];
+
+export function instructionContext(root) {
+  const out = [];
+  for (const rel of INSTRUCTION_FILES) {
+    try {
+      out.push({ uri: rel, sha256: sha256hex(fs.readFileSync(path.join(root, rel))) });
+    } catch {
+      // absent or unreadable: not an instruction the agent had
+    }
+  }
+  return out;
+}
 
 /// Handle one hook invocation. Never throws in the hook path — witnessing
 /// must never break the user's session (exit 0 always; failures are visible
@@ -30,6 +55,36 @@ export function handleHook(input) {
   state.sessions ??= {};
 
   switch (input.hook_event_name) {
+    case "SessionStart": {
+      // Producer-added kind (§1.7): the engine this session runs in and, when
+      // Claude Code includes it, the model — the provider facts APE asks for.
+      append(root, {
+        caseId,
+        kind: "session_start",
+        termId,
+        sessionId: session,
+        actor: "system",
+        payload: {
+          engine: "claude-code",
+          ...(typeof input.model === "string" && input.model ? { model: input.model } : {}),
+          ...(typeof input.source === "string" && input.source ? { source: input.source } : {}),
+        },
+      });
+      return;
+    }
+    case "PostModelSwitch": {
+      const turnId = state.sessions[session]?.turnId;
+      append(root, {
+        caseId,
+        ...(turnId ? { turnId } : {}),
+        kind: "model_switch", // producer-added kind (§1.7)
+        termId,
+        sessionId: session,
+        actor: "system",
+        payload: { from: input.from_model ?? null, to: input.to_model ?? null },
+      });
+      return;
+    }
     case "UserPromptSubmit": {
       // A prompt opens a turn; a prompt on a session with an open turn
       // supersedes it (§1.3 — engines don't always emit stop).
@@ -37,6 +92,7 @@ export function handleHook(input) {
       state.sessions[session] = { turnId, lastTs: Date.now() };
       writeState(root, state);
       const b = bounded(input.prompt ?? "");
+      const context = instructionContext(root);
       append(root, {
         caseId,
         turnId,
@@ -44,7 +100,12 @@ export function handleHook(input) {
         termId,
         sessionId: session,
         actor: "human",
-        payload: { prompt: b.text, ...(b.truncated ? { truncated: true } : {}), cwd: root },
+        payload: {
+          prompt: b.text,
+          ...(b.truncated ? { truncated: true } : {}),
+          cwd: root,
+          ...(context.length ? { context } : {}),
+        },
       });
       return;
     }
@@ -102,5 +163,5 @@ export function handleHook(input) {
 /// is how to reach this CLI on the machine.
 export function hooksConfig(command) {
   const h = [{ hooks: [{ type: "command", command }] }];
-  return { UserPromptSubmit: h, PreToolUse: h, PostToolUse: h, Stop: h };
+  return { SessionStart: h, UserPromptSubmit: h, PreToolUse: h, PostToolUse: h, PostModelSwitch: h, Stop: h };
 }

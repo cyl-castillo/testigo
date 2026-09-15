@@ -22,7 +22,8 @@ const sha256hex = (buf) => crypto.createHash("sha256").update(buf).digest("hex")
 ///   { valid, firstFailure, counts: {entries, recomputed, redacted, stubs},
 ///     timestamp: "none" | "declared" | "mismatch", keyId }
 /// firstFailure ∈ format | keyid | signature | payload | predicateType |
-///   exportedAt | digest | linkage | contentHash | redactionCount
+///   exportedAt | digest | linkage | contentHash | redactionCount |
+///   processContext | timestamps
 ///
 /// `enforce` turns this into a checker of a SPECIFIC predicate (a manifest's
 /// `enforce` block): { predicateType } requires an exact type URI (spec §5 —
@@ -114,6 +115,12 @@ export function verifyPacket(pkt, enforce = {}) {
   // withheld).
   if ((st.predicate?.redactionCount ?? 0) !== counts.redacted) return fail("redactionCount");
 
+  // 6c. Process context (§2.6): every field optional; present ones must be
+  // well-formed, and the declared session window must equal what the hashed
+  // lines carry (the one claim among them a verifier can actually check).
+  const pc = checkProcessContext(st.predicate ?? {}, events);
+  if (pc) return fail(pc);
+
   // 8. Timestamp (§2.5): informative — declared or mismatching, never "verified".
   let timestamp = "none";
   const tsp = pkt.timestamp;
@@ -133,6 +140,45 @@ export function verifyPacket(pkt, enforce = {}) {
   }
 
   return { valid: true, firstFailure: null, counts, timestamp, keyId };
+}
+
+const RFC3339_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+
+/// §2.6 checks. Returns a failure code or null. `processContext` = a present
+/// field is malformed; `timestamps` = the declared window does not equal the
+/// first/last non-stub line's `ts` (or only one bound is declared).
+export function checkProcessContext(pred, events) {
+  const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  const nonEmpty = (v) => typeof v === "string" && v.length > 0;
+  if (pred.provider !== undefined) {
+    const p = pred.provider;
+    if (!isObj(p) || !isObj(p.harness) || !nonEmpty(p.harness.name) || !nonEmpty(p.harness.version))
+      return "processContext";
+    if (p.agent !== undefined && !isObj(p.agent)) return "processContext";
+    if (p.languageModels !== undefined && !(Array.isArray(p.languageModels) && p.languageModels.every(isObj)))
+      return "processContext";
+  }
+  if (pred.contextArtifacts !== undefined) {
+    if (!Array.isArray(pred.contextArtifacts)) return "processContext";
+    for (const a of pred.contextArtifacts) {
+      if (!isObj(a)) return "processContext";
+      if (nonEmpty(a.uri) === nonEmpty(a.data)) return "processContext"; // exactly one of uri / data
+      if (a.digest !== undefined && !(isObj(a.digest) && /^[0-9a-f]{64}$/.test(a.digest.sha256 ?? "")))
+        return "processContext";
+      if (a.tags !== undefined && !(Array.isArray(a.tags) && a.tags.every(nonEmpty))) return "processContext";
+    }
+  }
+  if (pred.owner !== undefined && !nonEmpty(pred.owner)) return "processContext";
+  const hasStart = pred.startTimestamp !== undefined;
+  const hasEnd = pred.endTimestamp !== undefined;
+  if (hasStart !== hasEnd) return "timestamps";
+  if (hasStart) {
+    if (!RFC3339_Z.test(pred.startTimestamp) || !RFC3339_Z.test(pred.endTimestamp)) return "timestamps";
+    const ts = events.filter((e) => typeof e.line === "string").map((e) => JSON.parse(e.line).ts);
+    if (!ts.length) return "timestamps";
+    if (Date.parse(pred.startTimestamp) !== ts[0] || Date.parse(pred.endTimestamp) !== ts.at(-1)) return "timestamps";
+  }
+  return null;
 }
 
 // ---- runner (only when executed directly — verifyPacket stays importable) ---

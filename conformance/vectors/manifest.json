@@ -130,6 +130,36 @@
       "credit": "Rul1an (mutation donation, cyl-castillo/testigo#1)"
     },
     {
+      "file": "valid-process-context.proofpack.json",
+      "description": "Predicate carries the §2.6 process context (provider, contextArtifacts, session window, owner) derived from the events; the window equals the first/last non-stub line's ts. Valid — a verifier that rejects unknown predicate fields is wrong.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "invalid-timestamp-window.proofpack.json",
+      "description": "Producer bug signed over: startTimestamp is one second later than the first line's ts. The window is a claim about the hashed events, so it is checkable — and MUST be checked when present (§2.6). Everything else verifies.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "timestamps"
+      }
+    },
+    {
+      "file": "invalid-process-context-shape.proofpack.json",
+      "description": "Producer bug signed over: provider.harness has no name. Optional fields are optional; present ones MUST be well-formed (§2.6) — a policy gate allow-listing harnesses cannot pass on a nameless one.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "processContext"
+      }
+    },
+    {
       "file": "valid-timestamped.proofpack.json",
       "description": "Valid packet carrying a real RFC 3161 token over its signature (§2.5). Verifiers SHOULD report it as declared — and MUST NOT claim cryptographic token verification without a CMS stack.",
       "expect": {

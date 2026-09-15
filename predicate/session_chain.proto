@@ -38,6 +38,57 @@ message SessionChain {
 
   // Segment entries in ledger order; linkage must hold across all of them.
   repeated Entry events = 8;
+
+  // ---- process context (additive; shapes from FINOS Agentic Process
+  // Evidence so a statement can be referenced as an APE session log) ----
+
+  // Harness / agent / language models the segment ran under (producer-reported).
+  Provider provider = 9;
+
+  // Instruction files and other inputs the prompts ran under, derived from
+  // prompt.payload.context; digest-linked.
+  repeated ContextArtifact context_artifacts = 10;
+
+  // RFC 3339 in JSON; MUST equal the ts of the first / last non-stub entry.
+  google.protobuf.Timestamp start_timestamp = 11;
+  google.protobuf.Timestamp end_timestamp = 12;
+
+  // Login or email of the accountable human (declared label; the signer's
+  // key id stays the accountability anchor).
+  string owner = 13;
+}
+
+message Provider {
+  Harness harness = 1;
+  Agent agent = 2;
+  repeated LanguageModel language_models = 3;
+}
+
+message Harness {
+  string name = 1;
+  string version = 2;
+}
+
+message Agent {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+}
+
+message LanguageModel {
+  // Model requested, if known.
+  string inference_provider = 1;
+  // Model actually used, if known.
+  string resolved = 2;
+}
+
+message ContextArtifact {
+  repeated string tags = 1;
+  // Exactly one of uri / data.
+  string uri = 2;
+  string data = 3;
+  // Algorithm → lowercase hex digest (in-toto DigestSet); SHOULD include sha256.
+  map<string, string> digest = 4;
 }
 
 message Range {

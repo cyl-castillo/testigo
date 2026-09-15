@@ -9,7 +9,8 @@ import crypto from "node:crypto";
 const sha256hex = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
 /// Returns { valid, firstFailure, counts, timestamp, keyId } —
-/// firstFailure ∈ format | keyid | signature | payload | digest | linkage | contentHash;
+/// firstFailure ∈ format | keyid | signature | payload | digest | linkage | contentHash
+///   | redactionCount | processContext | timestamps;
 /// timestamp ∈ none | declared | mismatch (declared ≠ verified: no CMS here).
 export function verifyPacket(pkt) {
   const fail = (code) => ({ valid: false, firstFailure: code });
@@ -78,6 +79,34 @@ export function verifyPacket(pkt) {
   }
 
   if ((st.predicate?.redactionCount ?? 0) !== counts.redacted) return fail("redactionCount");
+
+  // §2.6 process context: optional fields, well-formed when present; the
+  // session window must equal the first/last non-stub line's ts.
+  const pred = st.predicate ?? {};
+  const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  const nonEmpty = (v) => typeof v === "string" && v.length > 0;
+  if (pred.provider !== undefined) {
+    const p = pred.provider;
+    if (!isObj(p) || !isObj(p.harness) || !nonEmpty(p.harness.name) || !nonEmpty(p.harness.version)) return fail("processContext");
+    if (p.agent !== undefined && !isObj(p.agent)) return fail("processContext");
+    if (p.languageModels !== undefined && !(Array.isArray(p.languageModels) && p.languageModels.every(isObj))) return fail("processContext");
+  }
+  if (pred.contextArtifacts !== undefined) {
+    if (!Array.isArray(pred.contextArtifacts)) return fail("processContext");
+    for (const a of pred.contextArtifacts) {
+      if (!isObj(a) || nonEmpty(a.uri) === nonEmpty(a.data)) return fail("processContext");
+      if (a.digest !== undefined && !(isObj(a.digest) && /^[0-9a-f]{64}$/.test(a.digest.sha256 ?? ""))) return fail("processContext");
+      if (a.tags !== undefined && !(Array.isArray(a.tags) && a.tags.every(nonEmpty))) return fail("processContext");
+    }
+  }
+  if (pred.owner !== undefined && !nonEmpty(pred.owner)) return fail("processContext");
+  if ((pred.startTimestamp !== undefined) !== (pred.endTimestamp !== undefined)) return fail("timestamps");
+  if (pred.startTimestamp !== undefined) {
+    const rfc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+    if (!rfc.test(pred.startTimestamp) || !rfc.test(pred.endTimestamp)) return fail("timestamps");
+    const ts = events.filter((e) => typeof e.line === "string").map((e) => JSON.parse(e.line).ts);
+    if (!ts.length || Date.parse(pred.startTimestamp) !== ts[0] || Date.parse(pred.endTimestamp) !== ts.at(-1)) return fail("timestamps");
+  }
 
   let timestamp = "none";
   const tsp = pkt.timestamp;

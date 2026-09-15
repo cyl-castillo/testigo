@@ -1,4 +1,15 @@
-# Testigo protocol — v0.1 (draft)
+# Testigo protocol — v0.2 (draft)
+
+> **v0.2 is additive.** It adds the `session_start` / `model_switch` /
+> `tool_call` event kinds and the `prompt.payload.context` member (§1.7),
+> and the **process context** predicate fields (§2.6): `provider`,
+> `contextArtifacts`, `startTimestamp` / `endTimestamp`, `owner`. The packet
+> `format` (`testigo-proofpack/v0.1`) and the predicate type URI are
+> unchanged (§5): every v0.1 packet is a valid v0.2 packet, and a v0.1
+> verifier ignores the new fields. The fields mirror the *Agentic Process
+> Evidence* proposal (FINOS ai-governance-framework#384) so a packet can be
+> referenced as an APE session log — see
+> [docs/ape-mapping.md](docs/ape-mapping.md).
 
 Testigo defines two artifacts and the rules connecting them:
 
@@ -131,6 +142,16 @@ anchored values found in refs or commit trailers.
 | `turn_end` | agent | `{preSha?, postSha?, filesChanged?: [{status, path}], filesTruncated?}` — closes a turn |
 | `case_link` | system | `{}` (binding carried by `caseId` + `termId`) |
 | `job_run` | system | `{jobId, jobName, status, summary}` |
+| `session_start` | system | `{engine, model?, source?}` — the engine a session runs in and, when the engine reports it, the model (v0.2) |
+| `model_switch` | system | `{from, to}` — a mid-session model change (v0.2) |
+| `tool_call` | agent | `{tool, input (bounded), truncated}` — a tool invocation whose approval status the producer cannot see (producers outside the permission path, e.g. testigo-cli) |
+
+The `prompt` payload MAY carry `context: [{uri, sha256}]` (v0.2): the
+instruction files (`CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`, or the
+producer's equivalents) present in the prompt's `cwd` **at prompt time**,
+with the sha256 of their bytes. Hashing at capture — inside the chain — is
+what lets the predicate-level `contextArtifacts` (§2.6) be *derived* rather
+than asserted.
 
 Payloads with unbounded inputs (tool inputs/outputs) MUST be size-bounded by
 the producer; the reference implementation truncates to a marked preview.
@@ -248,6 +269,10 @@ Given a packet, a verifier MUST:
 6. For every full non-redacted entry, recompute the content hash per §1.5 and
    require it to match. Require `redactionCount` to equal the number of
    entries carrying `redacted: true` (§2.3 — stubs do not count).
+6c. If any process-context field (§2.6) is present, require it to be
+   well-formed, and require `startTimestamp` / `endTimestamp` to equal the
+   `ts` of the first and last non-stub entries. Failure codes:
+   `processContext`, `timestamps`.
 7. Report: signature validity, key id (with the out-of-band trust note),
    digest match, linkage result, counts of recomputed / redacted / stub
    entries. Redacted and stub entries MUST be visibly reported, not silently
@@ -258,8 +283,8 @@ Given a packet, a verifier MUST:
    as **not** a cryptographic verification of the token unless the verifier
    actually validates the token's CMS structure and the TSA certificate chain.
 
-A packet is *valid* when steps 1–6 pass. What validity means — and does not
-mean — is spelled out in §3.
+A packet is *valid* when steps 1–6 (including 6c) pass. What validity means
+— and does not mean — is spelled out in §3.
 
 A [conformance suite](conformance/) provides golden vectors isolating each
 step above (and §2.5), plus a reference verifier to run them.
@@ -314,6 +339,62 @@ in the chosen TSA.
 observers) only a signature hash and the requester's network origin — no
 ledger content.
 
+### 2.6 Process context (optional, additive — v0.2)
+
+The predicate MAY carry five more members, placed before `events`:
+
+```json
+"provider": {
+  "harness": { "name": "testigo-cli", "version": "0.2.0" },
+  "agent": { "id": "claude-code", "name": "Claude Code" },
+  "languageModels": [ { "resolved": "claude-opus-4-8" }, { "inferenceProvider": "anthropic/claude-opus-4-8" } ]
+},
+"contextArtifacts": [
+  { "tags": ["instructions"], "uri": "CLAUDE.md", "digest": { "sha256": "<hex>" } }
+],
+"startTimestamp": "2026-07-15T16:41:19.508Z",
+"endTimestamp":   "2026-07-15T16:42:15.987Z",
+"owner": "login-or-email"
+```
+
+They answer the questions a process-level consumer asks of a session log —
+which harness, agent and models; which instructions; when; who is
+accountable — and they take their shapes from the *Agentic Process
+Evidence* proposal (`Provider`, `ContextArtifact`, `owner`,
+`startTimestamp` / `endTimestamp`) so a packet slots into an APE
+`sessionsLogs[]` reference without translation.
+
+Rules:
+
+- **All five are optional.** Absence is never a failure. Presence MUST be
+  well-formed: `provider` is an object whose `harness` has non-empty `name`
+  and `version`; `agent`, when present, is an object; `languageModels`,
+  when present, is an array of objects. Each `contextArtifacts` entry has
+  **exactly one** of `uri` / `data`, an optional `digest` whose `sha256` is
+  lowercase hex, and optional `tags` (non-empty strings). `owner`, when
+  present, is a non-empty string. Violations fail verification with code
+  `processContext`.
+- **The window is checkable, so it MUST be checked.** `startTimestamp` and
+  `endTimestamp` come together or not at all; both are RFC 3339 with a `Z`
+  designator; and they MUST equal the `ts` of the first and of the last
+  **non-stub** entry in `events` (redaction preserves `ts`, so the check
+  holds across redacted lines). Failure code: `timestamps`.
+- **Derived, not typed.** Producers SHOULD derive `provider.languageModels`
+  from `session_start` / `model_switch` events of the sessions involved
+  (which MAY sit outside the exported range — a model is a session
+  property), and `contextArtifacts` from the `context` members of the
+  `prompt` events *inside* the segment. A redacted prompt contributes
+  nothing: the derivation MUST NOT invent what the packet no longer shows.
+- **Vantage, as everywhere.** `provider`, `contextArtifacts` and `owner`
+  are producer assertions. A verifier checks their shape and, for the
+  window, their consistency with the hashed lines; it does not establish
+  that the named model ran or that the named human is accountable. The
+  signer's key id remains the accountability anchor; `owner` is a label
+  for the humans reading the packet (and for APE's `owner` field).
+
+The additive rule of §5 applies: verifiers that predate v0.2 ignore these
+members; the chain, digest and signature checks are unchanged.
+
 ---
 
 ## 3. Security considerations
@@ -353,6 +434,10 @@ ids over a channel receivers already trust.
   the stated reason, durably.
 - ISO/IEC 42001 and SOC 2 change-management controls map naturally onto
   packets attached to changes.
+- **FINOS AI Governance Framework, Agentic Process Evidence** (issue #384):
+  a packet is a session log with integrity and signature of its own;
+  §2.6 carries the provider, context, window and owner fields APE asks of
+  one. Field-by-field mapping in [docs/ape-mapping.md](docs/ape-mapping.md).
 
 This mapping is informative, not legal advice.
 
@@ -360,5 +445,7 @@ This mapping is informative, not legal advice.
 
 The predicate type URI carries the version
 (`https://github.com/cyl-castillo/testigo/attestation/v0.1`). Breaking changes bump the version;
-verifiers MUST reject predicate types they don't implement. Ledger-level
-additions (new kinds, new payload fields) are non-breaking (§1.6).
+verifiers MUST reject predicate types they don't implement. Ledger-level additions (new kinds, new payload fields — §1.7) and
+predicate-level optional members (§2.6) are non-breaking: verifiers MUST
+ignore unknown predicate fields and unknown kinds. v0.2 is such an addition
+and keeps the v0.1 type URI.

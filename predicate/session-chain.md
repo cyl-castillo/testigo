@@ -206,13 +206,32 @@ recomputation reasons over. Omittable when `subject` already carries the
 segment descriptor (the artifact-less case); the two sit at different
 granularities and nothing is double-counted.
 
+### Process context (additive)
+
+Five optional members, taken shape-for-shape from the FINOS *Agentic
+Process Evidence* proposal so a statement can be referenced as an APE
+session log: `provider` (`{harness{name,version}, agent?, languageModels?}`),
+`contextArtifacts` (`[{tags?, uri | data, digest?{sha256}}]`),
+`startTimestamp` / `endTimestamp` (RFC 3339 "Z") and `owner` (login or
+email). All optional; when present they MUST be well-formed, and the window
+MUST equal the `ts` of the first and last non-stub entries — the one claim
+among them a verifier can check against the hashed lines. Producers derive
+`languageModels` from `session_start` / `model_switch` events of the sessions
+involved and `contextArtifacts` from the `context` member of the segment's
+`prompt` events; a redacted prompt contributes nothing. `provider`,
+`contextArtifacts` and `owner` remain producer assertions (vantage as in the
+Model section). Normative text: Testigo SPEC §2.6.
+
 **Event kinds** (open set; informative payloads): `prompt` (human intent,
 opens a turn), `approval_request` / `approval_decision` (human-in-the-loop
 oversight; decision payload `{approvalId, tool, decision: allow|deny|ask,
 reason}` — field-compatible with the agent-decision predicate's
 `decision`/`reason` so the two families do not drift), `tool_call`,
 `tool_result`, `snapshot` (working-tree checkpoint), `turn_end` (closes a
-turn; carries the turn's file diff), `case_link`, `job_run`.
+turn; carries the turn's file diff), `case_link`, `job_run`, `session_start`
+(engine + model when reported), `model_switch`. A `prompt` payload MAY carry
+`context: [{uri, sha256}]` — the instruction files present in its cwd at
+prompt time.
 
 ### Verification
 
@@ -226,7 +245,11 @@ segment digest and require it to match wherever it appears (`subject` or
 `range.prevHashBefore`; (4) recompute content hashes for non-redacted full
 events, and require `redactionCount` to equal the entries carrying
 `redacted: true`; (5) report redacted and stub entries visibly — never
-silently pass them. A valid statement means exactly what the Model section's vantage
+silently pass them; (6) when process-context members are present, require
+them well-formed and require the declared window to equal the first/last
+non-stub entry's `ts` (failure codes `processContext`, `timestamps`; the
+vector subset carries a positive instance, the parent suite the signed-over
+negatives). A valid statement means exactly what the Model section's vantage
 paragraph says, and no more. Golden vectors — including
 valid-signature-around-internal-defect cases (signed-over broken digest,
 linkage and content hashes: a green signature is not a green verdict) — are
@@ -261,4 +284,6 @@ when the session made something; the session's own content-addressed
 descriptor otherwise — settled in
 [in-toto/attestation#554](https://github.com/in-toto/attestation/issues/554);
 testigo v0.1 always used the segment descriptor). If vetted, Testigo's next
-format version adopts this predicate type as-is.
+format version adopts this predicate type as-is. Testigo v0.2 (additive)
+added the process-context members above without changing the type URI; the
+draft carries them identically.

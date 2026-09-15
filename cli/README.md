@@ -29,10 +29,13 @@ testigo export --case jira:PROJ-42          # pre-sign review (nothing signed)
 testigo export --case jira:PROJ-42 --yes    # sign & write the proof packet
 ```
 
-`init` wires four hooks (UserPromptSubmit, PreToolUse, PostToolUse, Stop)
-into `.claude/settings.json` (`--user` for `~/.claude/settings.json`,
-`--print` to just look). From then on every prompt, tool call, tool result
-and turn end lands in a per-project, hash-chained, append-only ledger under
+`init` wires six hooks (SessionStart, UserPromptSubmit, PreToolUse,
+PostToolUse, PostModelSwitch, Stop) into `.claude/settings.json` (`--user`
+for `~/.claude/settings.json`, `--print` to just look). From then on every
+session start (engine, and the model when Claude Code sends it), prompt
+(with the sha256 of the `CLAUDE.md` / `.claude/CLAUDE.md` / `AGENTS.md`
+present in its cwd at that moment), tool call, tool result, model switch and
+turn end lands in a per-project, hash-chained, append-only ledger under
 `~/.local/share/testigo/` — outside the repo, never pushed. Hook failures
 never break a session (exit 0 always; `TESTIGO_DEBUG=1` to see them).
 
@@ -44,14 +47,23 @@ each packet), `testigo verify-packet`, or any DSSE tooling.
 signature (§2.5 — the TSA sees a signature hash, never content).
 `--redact seq,seq` excludes event contents while keeping the chain
 verifiable; the pre-sign review shows everything a packet would contain
-*before* anything is signed.
+*before* anything is signed. Every packet declares the
+[process context](../SPEC.md#26-process-context-optional-additive--v02)
+(spec §2.6) **derived from the ledger**: harness and engine, the models seen
+in `session_start` / `model_switch`, the instruction-file digests the
+prompts ran under, and the session window (which any verifier checks against
+the events). `--owner login|email` (default: the project's `git config
+user.email`) and `--model provider/name` (the model you asked for) are the
+two things you declare on top.
 
 ## What this captures — and what it doesn't
 
 Honesty first (it's the protocol's house style):
 
-- **Captured:** human prompts, agent tool calls (`tool_call`, a
-  producer-added kind per §1.7), tool results, turn ends, case links —
+- **Captured:** session starts (`session_start`: engine, model when
+  reported), human prompts (with instruction-file digests), agent tool
+  calls (`tool_call`), tool results, model switches (`model_switch`), turn
+  ends, case links —
   bound to turns by the **engine's session id**, which is stronger than the
   reference implementation's same-terminal heuristic but still not
   cryptographic: the hook trusts what the engine sends.

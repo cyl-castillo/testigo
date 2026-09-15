@@ -1,23 +1,50 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/cyl-castillo/testigo/attestation/v0.1/schema",
-  "title": "Testigo attestation predicate v0.1",
+  "title": "Testigo attestation predicate v0.1 (with the additive v0.2 process context, SPEC §2.6)",
   "type": "object",
-  "required": ["project", "exportedAtMs", "generator", "range", "events"],
+  "required": [
+    "project",
+    "exportedAtMs",
+    "generator",
+    "range",
+    "events"
+  ],
   "properties": {
     "caseId": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Exported case (intent thread); null = full ledger export."
     },
-    "project": { "type": "string", "description": "Project basename (not a path)." },
-    "exportedAtMs": { "type": "integer" },
-    "generator": { "type": "string", "description": "Producing software, e.g. agent-console/0.48.0" },
+    "project": {
+      "type": "string",
+      "description": "Project basename (not a path)."
+    },
+    "exportedAtMs": {
+      "type": "integer"
+    },
+    "generator": {
+      "type": "string",
+      "description": "Producing software, e.g. agent-console/0.48.0"
+    },
     "range": {
       "type": "object",
-      "required": ["fromSeq", "toSeq", "prevHashBefore"],
+      "required": [
+        "fromSeq",
+        "toSeq",
+        "prevHashBefore"
+      ],
       "properties": {
-        "fromSeq": { "type": "integer", "minimum": 0 },
-        "toSeq": { "type": "integer", "minimum": 0 },
+        "fromSeq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toSeq": {
+          "type": "integer",
+          "minimum": 0
+        },
         "prevHashBefore": {
           "type": "string",
           "description": "hash of the event before fromSeq; \"genesis\" when fromSeq is 0."
@@ -28,39 +55,195 @@
       "type": "object",
       "description": "Producing ledger's tail at export time (informative).",
       "properties": {
-        "seq": { "type": ["integer", "null"] },
-        "hash": { "type": ["string", "null"] }
+        "seq": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
-    "redactionCount": { "type": "integer", "minimum": 0 },
+    "redactionCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "provider": {
+      "type": "object",
+      "description": "SPEC §2.6 (v0.2, optional). Shape of the APE Provider object: harness / agent / languageModels.",
+      "required": [
+        "harness"
+      ],
+      "properties": {
+        "harness": {
+          "type": "object",
+          "required": [
+            "name",
+            "version"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "agent": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          }
+        },
+        "languageModels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "inferenceProvider": {
+                "type": "string"
+              },
+              "resolved": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "contextArtifacts": {
+      "type": "array",
+      "description": "SPEC §2.6 (v0.2, optional). APE ContextArtifact: exactly one of uri / data; optional sha256 digest and tags. Derived from prompt.payload.context.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "uri": {
+            "type": "string",
+            "minLength": 1
+          },
+          "data": {
+            "type": "string",
+            "minLength": 1
+          },
+          "digest": {
+            "type": "object",
+            "properties": {
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "uri"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          },
+          {
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "uri"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "startTimestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "SPEC §2.6 (v0.2, optional; requires endTimestamp). RFC 3339 of the first non-stub entry's ts — verifiers MUST check."
+    },
+    "endTimestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "SPEC §2.6 (v0.2, optional; requires startTimestamp). RFC 3339 of the last non-stub entry's ts — verifiers MUST check."
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SPEC §2.6 (v0.2, optional). Login or email of the accountable human — a declared label; the signer key id stays the anchor."
+    },
     "events": {
       "type": "array",
       "items": {
         "oneOf": [
           {
             "type": "object",
-            "required": ["line", "redacted"],
+            "required": [
+              "line",
+              "redacted"
+            ],
             "properties": {
               "line": {
                 "type": "string",
                 "description": "Raw ledger line, byte-exact (or with secrets replaced when redacted=true; hashes never altered)."
               },
-              "redacted": { "type": "boolean" }
+              "redacted": {
+                "type": "boolean"
+              }
             },
             "additionalProperties": false
           },
           {
             "type": "object",
-            "required": ["stub"],
+            "required": [
+              "stub"
+            ],
             "properties": {
               "stub": {
                 "type": "object",
-                "required": ["seq", "prevHash", "hash"],
+                "required": [
+                  "seq",
+                  "prevHash",
+                  "hash"
+                ],
                 "properties": {
-                  "seq": { "type": "integer" },
-                  "prevHash": { "type": "string" },
-                  "hash": { "type": "string" },
-                  "kind": { "type": "string" }
+                  "seq": {
+                    "type": "integer"
+                  },
+                  "prevHash": {
+                    "type": "string"
+                  },
+                  "hash": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
                 }
               }
             },
@@ -69,5 +252,13 @@
         ]
       }
     }
+  },
+  "dependentRequired": {
+    "startTimestamp": [
+      "endTimestamp"
+    ],
+    "endTimestamp": [
+      "startTimestamp"
+    ]
   }
 }

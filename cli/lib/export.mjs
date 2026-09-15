@@ -7,6 +7,7 @@
 // SSH key. The trust anchor for receivers is unchanged either way: the key
 // id, compared out-of-band.
 
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -15,6 +16,7 @@ import path from "node:path";
 import { readLedger, sha256hex, verifyChain } from "./ledger.mjs";
 import * as rfc3161 from "./rfc3161.mjs";
 
+const CLI_VERSION = "0.2.0";
 const FORMAT = "testigo-proofpack/v0.1";
 const PREDICATE_TYPE = "https://github.com/cyl-castillo/testigo/attestation/v0.1";
 const STATEMENT_TYPE = "https://in-toto.io/Statement/v1";
@@ -117,8 +119,71 @@ export function preview(root, caseId) {
   return { entries, range: { fromSeq: first, toSeq: last, prevHashBefore }, head: { seq: head.seq, hash: head.hash } };
 }
 
+/// `git config user.email` of the project, if any — the default `owner`
+/// (§2.6). A producer assertion, like everything at predicate level.
+function gitEmail(root) {
+  try {
+    const out = execFileSync("git", ["-C", root, "config", "user.email"], { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+/// §2.6 process context, DERIVED from the hashed lines the packet carries —
+/// never typed in at export. `owner` and `model` are the two producer
+/// assertions a human may add on top (declared, not evidenced).
+export function processContext(parsed, packed, { owner = null, model = null } = {}) {
+  // Only what the packet SHOWS: packed lines after redaction. A manually
+  // redacted prompt has no context left, and none is invented for it.
+  const inCase = packed.filter((e) => typeof e.line === "string").map((e) => JSON.parse(e.line));
+  const sessions = new Set(inCase.map((v) => v.sessionId).filter(Boolean));
+  const models = [];
+  const seenModel = new Set();
+  const pushModel = (m) => {
+    if (typeof m === "string" && m && !seenModel.has(m)) {
+      seenModel.add(m);
+      models.push({ resolved: m });
+    }
+  };
+  // Model facts are session properties: session_start / model_switch events
+  // of the involved sessions count even when they sit outside the segment.
+  for (const v of parsed) {
+    if (!sessions.has(v.sessionId)) continue;
+    if (v.kind === "session_start") pushModel(v.payload?.model);
+    if (v.kind === "model_switch") pushModel(v.payload?.to);
+  }
+  const languageModels = [...(model ? [{ inferenceProvider: model }] : []), ...models];
+  const provider = {
+    harness: { name: "testigo-cli", version: CLI_VERSION },
+    agent: { id: "claude-code", name: "Claude Code" },
+    ...(languageModels.length ? { languageModels } : {}),
+  };
+  const seenCtx = new Set();
+  const contextArtifacts = [];
+  for (const v of inCase) {
+    if (v.kind !== "prompt" || !Array.isArray(v.payload?.context)) continue;
+    for (const c of v.payload.context) {
+      if (typeof c?.uri !== "string" || !c.uri || !/^[0-9a-f]{64}$/.test(c.sha256 ?? "")) continue;
+      const k = `${c.uri}\n${c.sha256}`;
+      if (seenCtx.has(k)) continue;
+      seenCtx.add(k);
+      contextArtifacts.push({ tags: ["instructions"], uri: c.uri, digest: { sha256: c.sha256 } });
+    }
+  }
+  return {
+    provider,
+    ...(contextArtifacts.length ? { contextArtifacts } : {}),
+    startTimestamp: new Date(inCase[0].ts).toISOString(),
+    endTimestamp: new Date(inCase.at(-1).ts).toISOString(),
+    ...(owner ? { owner } : {}),
+  };
+}
+
 /// Sign and write the packet. `redactSeqs` are the human's pre-sign marks.
-export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [], tsa = null }) {
+export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [], tsa = null, owner = null, model = null }) {
   const pv = preview(root, caseId);
   const { parsed } = readLedger(root);
   let redactionCount = 0;
@@ -147,10 +212,11 @@ export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [
       caseId,
       project: path.basename(path.resolve(root)),
       exportedAtMs: Date.now(),
-      generator: "testigo-cli/0.1.0",
+      generator: `testigo-cli/${CLI_VERSION}`,
       range: pv.range,
       ledgerHead: pv.head,
       redactionCount,
+      ...processContext(parsed, entries, { owner: owner ?? gitEmail(root), model }),
       events: entries,
     },
   };
