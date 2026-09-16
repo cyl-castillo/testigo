@@ -114,10 +114,10 @@ such). The un-redacted packet stays private; both are signed by the same key:
 | event sequence | `prompt → snapshot → (approval_request → approval_decision → tool_result) ×3 → turn_end` |
 | human approvals | 3/3 commands, each with an explicit decision |
 | turn diff | `files: []` — read-only, provably |
-| digest (private, full) | `e6a889d0c460a9c2716bc365bdc9d52250822702f0b699141e0713d18e0a41bc` |
+| digest (private, full) | `f8d7db3fff68a80dbc545acac6f4cb08ece4b5295f709235a4491fd5025d9e72` |
 | digest (published, redacted) | `af21a0b7bfe48022764831415f1c82f45211f0b886ad59bbe4a19842308e0ceb` |
 | signer key id | `8caf09075df11abbbdea5cd1d120a5654d8d1ce2a32e2a6f018dde557c5014da` |
-| generator | `agent-console/0.48.1` |
+| generator | `agent-console/0.79.0` (re-exported 2026-09-16 from the same ledger, after the `redactionCount` fix; the redacted segment digest is unchanged) |
 
 That a proof can be *referenced without being revealed* is part of the design:
 the digest and key id above commit publicly to evidence that can be disclosed

@@ -95,8 +95,8 @@ Two structural differences beyond the kinds:
   that log to an external auditor discloses everything. Testigo redacts per
   event with `seq`/`prevHash`/`hash` preserved, so linkage verifies while
   content is reported as unverifiable, never silently passed (SPEC §2.3). The
-  published Fixy packet is exactly this: 8 of 12 entries redacted (the
-  prompt's home path automatically, the three agent requests and four tool
+  published Fixy packet is exactly this: 7 of 12 entries redacted (the
+  prompt's home path automatically, three agent requests and three tool
   results by hand), chain intact, approvals and empty diff fully verifiable.
 
 ---
@@ -176,12 +176,12 @@ so per APE the subject is the session log itself):
 | | |
 |---|---|
 | subject uri | `https://cyl-castillo.github.io/testigo/examples/fixy-deploy-verification.proofpack.json` |
-| subject sha256 | `10a80f9d2b65fd9fe0186b81a6f20a8a12099a8850acaa5e6a02087d3454db72` (the packet file bytes) |
+| subject sha256 | `2c9d7f01ea070530b6bb25084d3e274a197c3e4d14508cb69281ab732145b23b` (the packet file bytes) |
 | inner segment digest | `af21a0b7bfe48022764831415f1c82f45211f0b886ad59bbe4a19842308e0ceb` (Testigo subject) |
 | signer key id | `8caf09075df11abbbdea5cd1d120a5654d8d1ce2a32e2a6f018dde557c5014da` |
 | human approval decisions | 3 (`allow`, reason `approved once`), one per agent command |
 | turn diff | `filesChanged: []`, pre `d272287…` → post `5523ec5…`: provably read-only |
-| redaction | 8 of 12 entries redacted, chain intact |
+| redaction | 7 of 12 entries redacted (the prompt's home path automatically, three agent requests and three tool results by hand), chain intact |
 
 How to check it: download the packet, confirm its sha256 matches the APE
 subject digest, then drop it on the
@@ -189,8 +189,9 @@ subject digest, then drop it on the
 The APE statement is generated from the packet by
 [`examples/ape/build.mjs`](../examples/ape/build.mjs) — every field is derived
 from the verified bytes — and is **unsigned** on purpose: it shows the shape,
-it does not claim provenance for itself. A v0.1 packet has no
-`contextArtifacts`; packets exported by a v0.2 producer carry them (§7).
+it does not claim provenance for itself. This packet was captured before
+v0.2, so its prompt carries no instruction digests and the predicate has no
+`contextArtifacts`; sessions captured by a v0.2 producer carry them (§7).
 
 ---
 
