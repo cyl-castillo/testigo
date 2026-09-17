@@ -191,7 +191,7 @@ export function handleHook(input) {
 
 /// The hooks Claude Code needs (project or user settings.json). `command`
 /// is how to reach this CLI on the machine.
-export function hooksConfig(command) {
-  const h = [{ hooks: [{ type: "command", command }] }];
+export function hooksConfig(command, shell = "bash") {
+  const h = [{ hooks: [{ type: "command", command, shell }] }];
   return { SessionStart: h, UserPromptSubmit: h, PreToolUse: h, PostToolUse: h, PostModelSwitch: h, Stop: h };
 }

@@ -39,6 +39,16 @@ turn end lands in a per-project, hash-chained, append-only ledger under
 `~/.local/share/testigo/` — outside the repo, never pushed. Hook failures
 never break a session (exit 0 always; `TESTIGO_DEBUG=1` to see them).
 
+Generated commands use the current Node executable and absolute script path,
+quoted as literal arguments for sh/Git Bash (including Windows). Git Bash
+must be installed on Windows for this default. Use `init --shell powershell`
+to generate a PowerShell command instead; the settings explicitly select the
+chosen shell. Spaces, apostrophes, and shell metacharacters in paths are
+preserved. These commands are not cmd.exe/batch syntax. `--command CMD`
+remains a verbatim override: quote it for the selected hook shell, which may
+differ from the terminal running `init`. `--user` uses the platform home
+directory (`USERPROFILE` on Windows), independent of the project directory.
+
 Exports are [proof packets](../SPEC.md#2-the-proof-packet): a DSSE-signed
 in-toto statement anyone verifies with the
 [standalone verifier](../verifier/testigo-verifier.html) (written alongside
@@ -94,7 +104,8 @@ Honesty first (it's the protocol's house style):
 
 ## Correctness
 
-`node test.mjs` runs the end-to-end suite: hook capture (including
+`npm test` runs the end-to-end and portability suites. `node test.mjs` runs
+the end-to-end suite: hook capture (including
 interleaved sessions and a crash-torn tail healing), case linking, export
 with auto + manual redaction and out-of-case stubs, verification by both
 this CLI's verifier and the [conformance suite's](../conformance/)
@@ -102,3 +113,10 @@ independent one — and requires the CLI verifier to reproduce the manifest
 verdict on **every conformance vector**. Concurrent hook appends are
 serialized by an advisory lock (parallel tool calls are real; a fork in the
 chain would be corruption).
+
+The portability suite exercises generated commands in sh/Git Bash and, on
+Windows, PowerShell, from paths containing spaces and special characters;
+it also checks user settings, verifier copying, and the vector entrypoints.
+On Windows it locates Git Bash in its standard install directory, or uses
+`TESTIGO_TEST_BASH` when set to its executable path. Missing shells are
+reported as skipped tests.

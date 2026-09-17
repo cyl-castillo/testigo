@@ -22,8 +22,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, "vectors");
 const TOKEN_FIXTURE = path.join(HERE, "fixtures", "timestamp-token.b64");
 

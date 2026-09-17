@@ -4,24 +4,28 @@
 // gatekeeper: it records; it never orchestrates or blocks.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 import { append, caseFor, ledgerPath, readLedger, readState, verifyChain, writeState } from "../lib/ledger.mjs";
 import { handleHook, hooksConfig } from "../lib/hook.mjs";
 import { exportPacket, keyInfo, preview } from "../lib/export.mjs";
 import { attachEvidence, SOURCES } from "../lib/evidence.mjs";
 import { verifyPacket } from "../lib/verify.mjs";
+import { hookCommand } from "../lib/command.mjs";
 
 const HELP = `testigo — witness CLI for the Testigo protocol (spec: github.com/cyl-castillo/testigo)
 
 usage: testigo <command> [options]
 
-  init [--user] [--print] [--command CMD]
+  init [--user] [--print] [--shell bash|powershell] [--command CMD]
         Install the six capture hooks into Claude Code settings
         (./.claude/settings.json; --user targets ~/.claude/settings.json;
         --print only shows the JSON). Existing settings are merged, a .bak
-        is written first.
+        is written first. Commands use sh/Git Bash by default; choose
+        --shell powershell for PowerShell. --command is passed verbatim.
   hook  Hook entrypoint (reads the Claude Code hook JSON from stdin).
         Wired by init; never breaks a session — errors exit 0
         (TESTIGO_DEBUG=1 to see them).
@@ -93,15 +97,17 @@ switch (cmd) {
   }
 
   case "init": {
-    const self = path.resolve(new URL(import.meta.url).pathname);
-    const command = opt("--command", `node ${self} hook`);
-    const config = { hooks: hooksConfig(command) };
+    const shell = opt("--shell", "bash");
+    if (!["bash", "powershell"].includes(shell)) die("--shell must be bash or powershell");
+    const self = fileURLToPath(import.meta.url);
+    const command = opt("--command", hookCommand(process.execPath, self, shell));
+    const config = { hooks: hooksConfig(command, shell) };
     if (flag("--print")) {
       console.log(JSON.stringify(config, null, 2));
       break;
     }
     const target = flag("--user")
-      ? path.join(process.env.HOME ?? "", ".claude", "settings.json")
+      ? path.join(os.homedir(), ".claude", "settings.json")
       : path.join(ROOT, ".claude", "settings.json");
     let existing = {};
     if (fs.existsSync(target)) {
@@ -111,7 +117,9 @@ switch (cmd) {
     existing.hooks ??= {};
     for (const [event, matchers] of Object.entries(config.hooks)) {
       existing.hooks[event] ??= [];
-      const already = JSON.stringify(existing.hooks[event]).includes(command);
+      const already = existing.hooks[event].some((matcher) =>
+        matcher.hooks?.some((hook) => hook.type === "command" && hook.command === command &&
+          (hook.shell ?? "bash") === shell));
       if (!already) existing.hooks[event].push(...matchers);
     }
     fs.mkdirSync(path.dirname(target), { recursive: true });

@@ -15,7 +15,7 @@
     "commands"
   ],
   "scripts": {
-    "test": "node test.mjs"
+    "test": "node test.mjs && node --test test-portability.mjs"
   },
   "engines": {
     "node": ">=20"
