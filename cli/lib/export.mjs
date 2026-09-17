@@ -12,9 +12,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { readLedger, sha256hex, verifyChain } from "./ledger.mjs";
 import * as rfc3161 from "./rfc3161.mjs";
+import { verifyPacket } from "./verify.mjs";
 
 const CLI_VERSION = "0.2.0";
 const FORMAT = "testigo-proofpack/v0.1";
@@ -96,13 +98,26 @@ function manualRedact(line) {
   return JSON.stringify({ ...fields, hash });
 }
 
-/// The entries `export` would pack — the pre-sign review (§2.3, and the
-/// reference implementation's F6 lesson: only a human can judge what a
-/// pattern can't). Nothing is signed here.
-export function preview(root, caseId) {
-  const report = verifyChain(root);
+function readVerifiedLedger(root) {
+  const snapshot = readLedger(root);
+  const report = verifyChain(root, snapshot);
   if (!report.ok) throw new Error(`ledger chain broken at seq ${report.brokenAtSeq} — refusing to export`);
-  const { lines, parsed } = readLedger(root);
+  return snapshot;
+}
+
+/// Final entries after automatic and requested redactions. The complete
+/// statement (including metadata) is available through prepareStatement.
+export function preview(root, caseId, { redactSeqs = [] } = {}) {
+  return selectEntries(readVerifiedLedger(root), caseId, redactSeqs);
+}
+
+function redactLine(raw, seq, redactSeqs) {
+  const [automatic, hits] = autoRedact(raw);
+  const manual = redactSeqs.includes(seq);
+  return { line: manual ? manualRedact(automatic) : automatic, autoRedacted: hits > 0, redacted: hits > 0 || manual };
+}
+
+function selectEntries({ lines, parsed }, caseId, redactSeqs) {
   if (!lines.length) throw new Error("ledger is empty — nothing to export");
   const inCase = (v) => caseId == null || v.caseId === caseId;
   const first = parsed.findIndex(inCase);
@@ -112,10 +127,9 @@ export function preview(root, caseId) {
   for (let i = first; i <= last; i++) {
     const v = parsed[i];
     if (inCase(v)) {
-      const [line, hits] = autoRedact(lines[i]);
-      entries.push({ seq: v.seq, kind: v.kind, actor: v.actor, stub: false, autoRedacted: hits > 0, line });
+      entries.push({ seq: v.seq, kind: v.kind, actor: v.actor, stub: false, ...redactLine(lines[i], v.seq, redactSeqs) });
     } else {
-      entries.push({ seq: v.seq, kind: v.kind, actor: v.actor, stub: true });
+      entries.push({ seq: v.seq, kind: v.kind, stub: true, prevHash: v.prevHash, hash: v.hash });
     }
   }
   const prevHashBefore = first > 0 ? parsed[first - 1].hash : "genesis";
@@ -186,29 +200,23 @@ export function processContext(parsed, packed, { owner = null, model = null } = 
   };
 }
 
-/// Sign and write the packet. `redactSeqs` are the human's pre-sign marks.
-export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [], tsa = null, owner = null, model = null }) {
-  const pv = preview(root, caseId);
-  const { parsed } = readLedger(root);
-  let redactionCount = 0;
+/// Build the complete unsigned statement from one verified snapshot. Review
+/// and direct export share this path, including redactions and metadata.
+export function prepareStatement(root, { caseId = null, redactSeqs = [], owner = null, model = null } = {}) {
+  const snapshot = readVerifiedLedger(root);
+  const pv = selectEntries(snapshot, caseId, redactSeqs);
   const entries = pv.entries.map((e) => {
     if (e.stub) {
-      const raw = parsed[e.seq];
-      return { stub: { seq: raw.seq, prevHash: raw.prevHash, hash: raw.hash, kind: raw.kind } };
+      return { stub: { seq: e.seq, prevHash: e.prevHash, hash: e.hash, kind: e.kind } };
     }
-    let line = e.line;
-    let redacted = e.autoRedacted;
-    if (e.autoRedacted) redactionCount++;
-    if (redactSeqs.includes(e.seq)) {
-      line = manualRedact(line);
-      redacted = true;
-      redactionCount++;
-    }
-    return { line, redacted };
+    return { line: e.line, redacted: e.redacted };
   });
+  // Session model facts can come from outside the selected segment. Apply
+  // the same redactions there so metadata cannot restore removed content.
+  const contextLines = snapshot.lines.map((line, i) => JSON.parse(redactLine(line, snapshot.parsed[i].seq, redactSeqs).line));
 
   const eventsBody = JSON.stringify(entries);
-  const statement = {
+  return {
     _type: STATEMENT_TYPE,
     subject: [{ name: caseId ?? "ledger", digest: { sha256: sha256hex(Buffer.from(eventsBody, "utf8")) } }],
     predicateType: PREDICATE_TYPE,
@@ -219,12 +227,37 @@ export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [
       generator: `testigo-cli/${CLI_VERSION}`,
       range: pv.range,
       ledgerHead: pv.head,
-      redactionCount,
-      ...processContext(parsed, entries, { owner: owner ?? gitEmail(root), model }),
+      redactionCount: entries.filter((e) => e.redacted).length,
+      ...processContext(contextLines, entries, { owner: owner ?? gitEmail(root), model }),
       events: entries,
     },
   };
-  const payload = Buffer.from(JSON.stringify(statement), "utf8");
+}
+
+export function writeReview(root, { outDir, ...options }) {
+  const statement = prepareStatement(root, options);
+  const payload = Buffer.from(JSON.stringify(statement, null, 2) + "\n", "utf8");
+  fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
+  // A fresh file per review: regenerating with redactions never overwrites
+  // an earlier review that the human may still be inspecting.
+  const file = path.join(outDir, `review-${crypto.randomUUID()}.json`);
+  fs.writeFileSync(file, payload, { flag: "wx", mode: 0o600 });
+  return { path: file, statement };
+}
+
+/// Sign the saved review bytes, without rereading the ledger, git identity,
+/// or clock. --yes without a review remains an explicit unattended export.
+export async function exportPacket(root, { outDir, tsa = null, reviewFile = null, ...options }) {
+  const payload = reviewFile
+    ? fs.readFileSync(reviewFile)
+    : Buffer.from(JSON.stringify(prepareStatement(root, options)), "utf8");
+  const statement = JSON.parse(payload.toString("utf8"));
+  if (statement._type !== STATEMENT_TYPE || statement.predicateType !== PREDICATE_TYPE ||
+      !Array.isArray(statement.predicate?.events) || !statement.predicate.events.length ||
+      !(statement.predicate.caseId === null || typeof statement.predicate.caseId === "string")) {
+    throw new Error("invalid review statement — regenerate the pre-sign review");
+  }
+  const { caseId, events: entries, redactionCount } = statement.predicate;
   const { priv, pubRaw, keyId } = keys(loadOrCreateSeed());
   const pae = Buffer.concat([
     Buffer.from(`DSSEv1 ${PAYLOAD_TYPE.length} ${PAYLOAD_TYPE} ${payload.length} `, "utf8"),
@@ -241,6 +274,8 @@ export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [
     },
     publicKey: pubRaw.toString("base64"),
   };
+  const report = verifyPacket(packet);
+  if (!report.valid) throw new Error(`invalid review statement (${report.firstFailure}) — regenerate the pre-sign review`);
   if (tsa) packet.timestamp = await rfc3161.obtain(tsa, sig);
 
   fs.mkdirSync(outDir, { recursive: true });
@@ -253,8 +288,8 @@ export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [
   // Ship the standalone verifier alongside when we can find it (repo
   // checkout / packaged copy); otherwise point at the hosted one.
   let verifier = HOSTED_VERIFIER;
-  const local = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "verifier", "testigo-verifier.html");
-  const repo = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "verifier", "testigo-verifier.html");
+  const local = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "verifier", "testigo-verifier.html");
+  const repo = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "verifier", "testigo-verifier.html");
   for (const src of [local, repo]) {
     if (fs.existsSync(src)) {
       verifier = path.join(outDir, "testigo-verifier.html");
