@@ -15,7 +15,7 @@
     "commands"
   ],
   "scripts": {
-    "test": "node test.mjs"
+    "test": "node --test test-ledger.mjs && node test.mjs"
   },
   "engines": {
     "node": ">=20"

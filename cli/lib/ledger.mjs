@@ -68,29 +68,44 @@ export function withLock(target, fn) {
   }
 }
 
-/// Raw lines, byte-exact (hashes were computed over these bytes). A torn
-/// final line (crash mid-append) is tolerated and reported; unparseable
-/// lines anywhere else are tampering (§1.5).
+/// Raw lines, byte-exact (hashes were computed over these bytes). Only an
+/// unparseable, unterminated final line is a torn tail. A complete final
+/// record without a newline is retained and needs only its separator.
 export function readLedger(root) {
   const p = ledgerPath(root);
-  if (!fs.existsSync(p)) return { lines: [], parsed: [], tornTail: false };
-  const raw = fs.readFileSync(p, "utf8");
-  const lines = raw.split("\n").filter((l) => l.trim() !== "");
+  if (!fs.existsSync(p)) return { lines: [], parsed: [], tornTail: false, missingNewline: false, tailOffset: 0 };
+  const raw = fs.readFileSync(p);
+  const tailOffset = raw.lastIndexOf(0x0a) + 1;
+  const unterminated = raw.length > tailOffset;
+  const physicalLines = raw.toString("utf8").split("\n");
+  const lines = [];
   const parsed = [];
   let tornTail = false;
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < physicalLines.length; i++) {
+    const line = physicalLines[i];
+    if (line.trim() === "") continue;
     try {
-      parsed.push(JSON.parse(lines[i]));
+      parsed.push(JSON.parse(line));
+      lines.push(line);
     } catch {
-      if (i === lines.length - 1) {
+      if (unterminated && i === physicalLines.length - 1) {
         tornTail = true;
-        lines.pop();
       } else {
         throw new Error(`unparseable ledger line at index ${i} — tampering or corruption`);
       }
     }
   }
-  return { lines, parsed, tornTail };
+  return { lines, parsed, tornTail, missingNewline: unterminated && !tornTail, tailOffset };
+}
+
+// writeSync may consume fewer bytes than requested. Use byte offsets (not
+// string slices) so a short write inside a UTF-8 character is resumed exactly.
+function writeAll(fd, bytes) {
+  for (let offset = 0; offset < bytes.length;) {
+    const written = fs.writeSync(fd, bytes, offset, bytes.length - offset);
+    if (written === 0) throw new Error("ledger write made no progress");
+    offset += written;
+  }
 }
 
 /// Serialize with `hash` as the FINAL member over the exact bytes hashed
@@ -114,13 +129,7 @@ export function bounded(value) {
 export function append(root, spec) {
   const p = ledgerPath(root);
   return withLock(p, () => {
-    const { lines, tornTail } = readLedger(root);
-    if (tornTail) {
-      // Heal by rewriting without the torn line (atomic tmp+rename).
-      const tmp = `${p}.tmp`;
-      fs.writeFileSync(tmp, lines.length ? lines.join("\n") + "\n" : "");
-      fs.renameSync(tmp, p);
-    }
+    const { lines, tornTail, missingNewline, tailOffset } = readLedger(root);
     let seq = 0;
     let prevHash = "genesis";
     if (lines.length) {
@@ -141,9 +150,25 @@ export function append(root, spec) {
       prevHash,
     };
     const line = sealEvent(fields);
+    if (tornTail) {
+      // Shorten to the last separator, preserving every prefix byte.
+      // Windows requires a writable (not append-only) handle to truncate.
+      const repairFd = fs.openSync(p, "r+");
+      try {
+        fs.ftruncateSync(repairFd, tailOffset);
+        fs.fsyncSync(repairFd);
+      } finally {
+        fs.closeSync(repairFd);
+      }
+    }
     const fd = fs.openSync(p, "a");
     try {
-      fs.writeSync(fd, line + "\n");
+      if (missingNewline) {
+        writeAll(fd, Buffer.from("\n"));
+        // Commit the separator before any next-event bytes can reach disk.
+        fs.fsyncSync(fd);
+      }
+      writeAll(fd, Buffer.from(line + "\n", "utf8"));
       fs.fsyncSync(fd);
     } finally {
       fs.closeSync(fd);

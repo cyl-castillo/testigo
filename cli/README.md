@@ -81,7 +81,7 @@ Honesty first (it's the protocol's house style):
 
 ## Correctness
 
-`node test.mjs` runs the end-to-end suite: hook capture (including
+`npm test` runs the tail-recovery regression tests and the end-to-end suite: hook capture (including
 interleaved sessions and a crash-torn tail healing), case linking, export
 with auto + manual redaction and out-of-case stubs, verification by both
 this CLI's verifier and the [conformance suite's](../conformance/)
@@ -89,3 +89,16 @@ independent one — and requires the CLI verifier to reproduce the manifest
 verdict on **every conformance vector**. Concurrent hook appends are
 serialized by an advisory lock (parallel tool calls are real; a fork in the
 chain would be corruption).
+
+Ledger reads never modify the file. A complete final JSON record without a
+newline is retained; the next append adds and syncs its separator first. An
+unparseable final fragment without a newline is reported as a torn tail;
+the next append truncates only that fragment and syncs the repair, preserving
+all preceding bytes. Unparseable newline-terminated records (including two
+concatenated events) are corruption and stop reading/appending without repair.
+Whitespace-only lines remain ignored and their bytes are preserved.
+
+Appends resume short writes at byte offsets and sync the complete record and
+newline before returning success. Write or sync failures propagate; a fully
+written event can remain even if append reports failure, and recovery retains
+it. Retrying an unsuccessful append is therefore not an exactly-once operation.
