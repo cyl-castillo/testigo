@@ -70,8 +70,11 @@ export function verifyPacket(pkt) {
     }
     if (prevHash !== prev) return fail("linkage");
     if (typeof e.line === "string" && !e.redacted) {
-      const idx = e.line.lastIndexOf('"hash":"');
-      if (sha256hex(Buffer.from(e.line.slice(0, idx) + '"hash":""}', "utf8")) !== hash)
+      // hash must be final; preserve every byte except the digest itself.
+      const field = /("hash"\s*:\s*")([0-9a-f]{64})("\s*}\s*)$/.exec(e.line);
+      if (!field || field[2] !== hash) return fail("contentHash");
+      const unhashed = e.line.slice(0, field.index) + field[1] + field[3];
+      if (sha256hex(Buffer.from(unhashed, "utf8")) !== hash)
         return fail("contentHash");
       counts.recomputed++;
     }

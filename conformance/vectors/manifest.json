@@ -95,6 +95,66 @@
       }
     },
     {
+      "file": "invalid-member-after-hash.proofpack.json",
+      "description": "An additional member follows hash. Original hashes and linkage are unchanged; signature and subject digest verify. MUST fail contentHash: hash must be the final member and no bytes may be discarded.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "contentHash"
+      }
+    },
+    {
+      "file": "invalid-payload-after-hash.proofpack.json",
+      "description": "A duplicate payload after hash overrides the original prompt when parsed. Original hashes and linkage are unchanged; signature and subject digest verify. MUST fail contentHash: hash must be the final member and no bytes may be discarded.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "contentHash"
+      }
+    },
+    {
+      "file": "invalid-escaped-payload-after-hash.proofpack.json",
+      "description": "An escaped duplicate payload key after hash overrides the original prompt when parsed. Original hashes and linkage are unchanged; signature and subject digest verify. MUST fail contentHash: hash must be the final member and no bytes may be discarded.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "contentHash"
+      }
+    },
+    {
+      "file": "invalid-hash-trailing-whitespace.proofpack.json",
+      "description": "Whitespace appended after sealing is still a byte change: the original content hash no longer matches. Signature, subject digest and linkage verify; MUST fail contentHash.",
+      "expect": {
+        "valid": false,
+        "firstFailure": "contentHash"
+      }
+    },
+    {
+      "file": "valid-hash-whitespace.proofpack.json",
+      "description": "A noncanonical line sealed with whitespace around its final hash member and after the closing brace. Preserve every byte except the hash value; do not canonicalize or trim.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 1,
+          "recomputed": 1,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "valid-payload-hash.proofpack.json",
+      "description": "A payload may contain nested hash members and hash-like quoted text. Only the final event-level hash value is emptied; all payload bytes remain covered.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 1,
+          "recomputed": 1,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
       "file": "invalid-redaction-count.proofpack.json",
       "description": "Producer bug signed over: redactionCount does not equal the number of redacted entries (§2.3 — stubs are NOT redactions). Everything else verifies; the miscount misrepresents what was withheld. MUST fail §2.4 step 6.",
       "expect": {
