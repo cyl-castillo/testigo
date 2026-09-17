@@ -10,6 +10,7 @@ import process from "node:process";
 import { append, caseFor, ledgerPath, readLedger, readState, verifyChain, writeState } from "../lib/ledger.mjs";
 import { handleHook, hooksConfig } from "../lib/hook.mjs";
 import { exportPacket, keyInfo, preview } from "../lib/export.mjs";
+import { attachEvidence, SOURCES } from "../lib/evidence.mjs";
 import { verifyPacket } from "../lib/verify.mjs";
 
 const HELP = `testigo — witness CLI for the Testigo protocol (spec: github.com/cyl-castillo/testigo)
@@ -29,6 +30,13 @@ usage: testigo <command> [options]
   link <caseId> [--term ID] [--root DIR]
         Bind a session to a case (e.g. jira:FIXY-12, github:org/repo#5).
         Defaults to the most recently active session.
+  attach <file-or-url> [--source S] [--note TEXT] [--term ID] [--root DIR]
+        Commit the chain to an external record: its location and the sha256
+        of its bytes (never the bytes). --source is one of
+        claude-code-transcript, anthropic-compliance-api, github-agent-logs,
+        file (default), url. Use it for a Compliance API export, a GitHub
+        agent session log you downloaded, or any artefact an auditor will
+        hold a copy of. Stop hooks already attach the Claude Code transcript.
   verify [--root DIR]
         Walk the project ledger's hash chain.
   export [--case ID] [--out DIR] [--redact s1,s2] [--tsa URL] [--yes] [--root DIR]
@@ -132,6 +140,8 @@ switch (cmd) {
             ? `tool=${p.tool}`
             : e.kind === "case_link"
               ? e.caseId
+              : e.kind === "external_evidence"
+              ? `${p.source} ${p.sha256?.slice(0, 12)}… ${p.uri}`
               : e.kind === "session_start"
                 ? `${p.engine ?? ""}${p.model ? " model=" + p.model : ""}`
                 : e.kind === "model_switch"
@@ -160,6 +170,18 @@ switch (cmd) {
     state.cases[termId] = caseId;
     writeState(ROOT, state);
     console.log(`linked session ${termId} → ${caseId}`);
+    break;
+  }
+
+  case "attach": {
+    const target = args[1];
+    if (!target || target.startsWith("--")) die("usage: testigo attach <file-or-url> [--source S] [--note TEXT] [--term ID]");
+    const source = opt("--source", /^https?:\/\//i.test(target) ? "url" : "file");
+    if (!SOURCES.includes(source)) die(`--source must be one of: ${SOURCES.join(", ")}`);
+    const ev = await attachEvidence(ROOT, { target, source, note: opt("--note"), termId: opt("--term") });
+    console.log(`attached ${ev.payload.source} evidence to ${ev.caseId} (seq ${ev.seq})`);
+    console.log(`  ${ev.payload.uri}`);
+    console.log(`  sha256 ${ev.payload.sha256} · ${ev.payload.bytes} bytes`);
     break;
   }
 

@@ -60,6 +60,10 @@ export function keyInfo() {
 // quote-safe on purpose — an eager regex that ate a JSON quote would corrupt
 // the line.
 const PATTERNS = [
+  // Home directories: prompts record their cwd and evidence records their
+  // path; a packet that leaves the machine should not name the operator.
+  [/\/home\/[A-Za-z0-9._-]+/g, "[REDACTED:home]"],
+  [/\/Users\/[A-Za-z0-9._-]+/g, "[REDACTED:home]"],
   [/AKIA[0-9A-Z]{16}/g, "[REDACTED:aws-key]"],
   [/ghp_[A-Za-z0-9]{36,}/g, "[REDACTED:github-token]"],
   [/github_pat_[A-Za-z0-9_]{22,}/g, "[REDACTED:github-token]"],

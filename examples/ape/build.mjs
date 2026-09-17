@@ -44,6 +44,11 @@ const approvals = lines.filter((l) => l.kind === "approval_decision");
 const turnEnds = lines.filter((l) => l.kind === "turn_end");
 const last = turnEnds.at(-1)?.payload ?? {};
 const snapshot = lines.find((l) => l.kind === "snapshot")?.payload?.commitSha;
+// external_evidence events are the packet's commitments to platform-held
+// records: exactly what APE's sessionsLogs[] (uri + digest) expects.
+const sessionsLogs = lines
+  .filter((l) => l.kind === "external_evidence" && l.payload?.uri && /^[0-9a-f]{64}$/.test(l.payload?.sha256 ?? ""))
+  .map((l) => ({ uri: l.payload.uri, digest: { sha256: l.payload.sha256 }, ...(l.payload.source ? { annotations: { source: l.payload.source } } : {}) }));
 
 const out = {
   _type: "https://in-toto.io/Statement/v1",
@@ -52,6 +57,7 @@ const out = {
   predicate: {
     providers: [pred.provider ?? { harness: { name: harnessName, version: harnessVersion } }],
     traceId: pred.caseId ?? "ledger",
+    ...(sessionsLogs.length ? { sessionsLogs } : {}),
     ...(tools.length ? { tools: tools.map((name) => ({ name })) } : {}),
     ...(pred.contextArtifacts ? { contextArtifacts: pred.contextArtifacts } : {}),
     custom: {

@@ -68,6 +68,13 @@ Reference implementation: [agent-console](https://github.com/cyl-castillo/agent-
 and stamps console-made commits with `Testigo-Case:` trailers resolved from
 ledger evidence.
 
+Packets can also **commit to records held elsewhere** — the Claude Code
+transcript at each turn end, an Anthropic Compliance API export, a GitHub
+agent session log — as `external_evidence` events (SPEC §1.7): the chain
+carries the record's location and sha256, a receiver with the platform's
+copy recomputes it. This is how a packet composes with what the platforms
+already log instead of competing with it.
+
 Lightweight capture without the console: [`cli/`](cli/) is a zero-dependency
 Node CLI that witnesses any Claude Code session via hooks, links cases, and
 exports signed packets — with the capture-scope differences

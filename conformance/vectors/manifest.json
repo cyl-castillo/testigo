@@ -160,6 +160,20 @@
       }
     },
     {
+      "file": "valid-external-evidence.proofpack.json",
+      "description": "Chain committing to records held elsewhere (§1.7 external_evidence): the Claude Code transcript at turn end and a Compliance API export attached afterwards. Valid; a verifier reports the commitments and MUST NOT present the records as verified.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
       "file": "valid-timestamped.proofpack.json",
       "description": "Valid packet carrying a real RFC 3161 token over its signature (§2.5). Verifiers SHOULD report it as declared — and MUST NOT claim cryptographic token verification without a CMS stack.",
       "expect": {

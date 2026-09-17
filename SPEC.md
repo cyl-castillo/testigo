@@ -145,6 +145,19 @@ anchored values found in refs or commit trailers.
 | `session_start` | system | `{engine, model?, source?}` — the engine a session runs in and, when the engine reports it, the model (v0.2) |
 | `model_switch` | system | `{from, to}` — a mid-session model change (v0.2) |
 | `tool_call` | agent | `{tool, input (bounded), truncated}` — a tool invocation whose approval status the producer cannot see (producers outside the permission path, e.g. testigo-cli) |
+| `external_evidence` | system | `{source, uri, sha256, bytes, mediaType?, note?}` — a commitment to a record held elsewhere (v0.2): `source` names the system (`claude-code-transcript`, `anthropic-compliance-api`, `github-agent-logs`, `file`, `url`), `sha256` is over the bytes the producer saw |
+
+**External evidence.** Platforms keep their own record of an agent session
+— Claude Code writes a transcript on disk and Anthropic's Compliance API
+serves the same transcripts centrally; GitHub links every agent commit to
+its session log. An `external_evidence` event puts the digest of such a
+record *inside the chain*, so a packet commits to it without carrying it:
+a receiver who obtains the record from the platform recomputes the sha256
+and knows it is the one this session pointed at. The digest binds the
+bytes at capture time (a transcript keeps growing after a turn ends);
+verifiers do not fetch anything and MUST NOT report the record as verified
+— only the commitment is. testigo-cli records the Claude Code transcript at
+every turn end and attaches any file or URL with `testigo attach`.
 
 The `prompt` payload MAY carry `context: [{uri, sha256}]` (v0.2): the
 instruction files (`CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`, or the

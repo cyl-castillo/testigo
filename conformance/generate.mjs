@@ -468,6 +468,28 @@ add(
   { valid: false, firstFailure: "processContext" },
 );
 
+// ---- external evidence (§1.7) ----------------------------------------------
+// A chain that commits to records held elsewhere: the Claude Code transcript
+// at turn end and an Anthropic Compliance API export attached later. The
+// digests are of fixed synthetic bytes; what the vector pins is that a
+// verifier passes the kind and reports the commitment, never "verified".
+
+const TRANSCRIPT_SHA = sha256hex(Buffer.from('{"type":"user","message":"deploy"}\n', "utf8"));
+const EXPORT_SHA = sha256hex(Buffer.from('{"session":"s-1","transcript":"…"}', "utf8"));
+const EVI = ledger([
+  { caseId: CASE, kind: "prompt", actor: "human", turnId: "turn-1", termId: "t-1", payload: { prompt: "deploy", cwd: "/proj" } },
+  { caseId: CASE, kind: "tool_result", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { tool: "Bash", excerpt: "ok", truncated: false } },
+  { caseId: CASE, kind: "external_evidence", actor: "system", turnId: "turn-1", termId: "t-1", payload: { source: "claude-code-transcript", uri: "[REDACTED:home]/.claude/projects/proj/s-1.jsonl", sha256: TRANSCRIPT_SHA, bytes: 34 } },
+  { caseId: CASE, kind: "turn_end", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { filesChanged: [] } },
+  { caseId: CASE, kind: "external_evidence", actor: "system", termId: "t-1", payload: { source: "anthropic-compliance-api", uri: "compliance-export-s-1.json", sha256: EXPORT_SHA, bytes: 34, note: "org export of session s-1" } },
+]);
+add(
+  "valid-external-evidence",
+  "Chain committing to records held elsewhere (§1.7 external_evidence): the Claude Code transcript at turn end and a Compliance API export attached afterwards. Valid; a verifier reports the commitments and MUST NOT present the records as verified.",
+  packet({ entries: EVI.map(full), caseId: CASE, range: { fromSeq: 0, toSeq: 4, prevHashBefore: "genesis" }, head: { seq: 4, hash: EVI.at(-1).hash } }),
+  { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "none" },
+);
+
 // ---- timestamp vectors (need the one-time token fixture) -------------------
 
 if (fs.existsSync(TOKEN_FIXTURE)) {
