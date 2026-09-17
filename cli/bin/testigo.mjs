@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { append, caseFor, ledgerPath, readLedger, readState, verifyChain, writeState } from "../lib/ledger.mjs";
+import { append, ledgerPath, readLedger, verifyChain } from "../lib/ledger.mjs";
 import { handleHook, hooksConfig } from "../lib/hook.mjs";
 import { exportPacket, keyInfo, preview } from "../lib/export.mjs";
 import { attachEvidence, SOURCES } from "../lib/evidence.mjs";
@@ -158,17 +158,16 @@ switch (cmd) {
     const caseId = args[1];
     if (!caseId || caseId.startsWith("--")) die("usage: testigo link <caseId> [--term ID]");
     let termId = opt("--term");
-    if (!termId) {
-      const sessions = Object.entries(readState(ROOT).sessions ?? {});
-      sessions.sort((a, b) => (b[1].lastTs ?? 0) - (a[1].lastTs ?? 0));
-      termId = sessions[0]?.[0];
-      if (!termId) die("no active session found — pass --term <sessionId>");
-    }
-    append(ROOT, { caseId, kind: "case_link", termId, actor: "system", payload: {} });
-    const state = readState(ROOT);
-    state.cases ??= {};
-    state.cases[termId] = caseId;
-    writeState(ROOT, state);
+    const event = append(ROOT, (state) => {
+      if (!termId) {
+        const sessions = Object.entries(state.sessions);
+        sessions.sort((a, b) => (b[1].lastTs ?? 0) - (a[1].lastTs ?? 0));
+        termId = sessions[0]?.[0];
+        if (!termId) return; // report outside the lock; die() would skip finally
+      }
+      return { caseId, kind: "case_link", termId, actor: "system", payload: {} };
+    });
+    if (!event) die("no active session found — pass --term <sessionId>");
     console.log(`linked session ${termId} → ${caseId}`);
     break;
   }

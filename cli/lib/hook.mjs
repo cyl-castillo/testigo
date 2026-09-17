@@ -21,7 +21,7 @@
 // moment. The export derives the predicate-level fields from these hashed
 // lines, so what the packet declares about the run is what the run recorded.
 
-import { append, bounded, caseFor, readState, sha256hex, writeState } from "./ledger.mjs";
+import { append, bounded, caseFor, sha256hex } from "./ledger.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -60,23 +60,29 @@ export function instructionContext(root) {
   return out;
 }
 
-/// Handle one hook invocation. Never throws in the hook path — witnessing
-/// must never break the user's session (exit 0 always; failures are visible
-/// with TESTIGO_DEBUG=1).
+/// Handle one hook invocation. The CLI catches failures and exits 0, so
+/// witnessing never breaks the user's session (TESTIGO_DEBUG=1 shows errors).
 export function handleHook(input) {
   const session = input.session_id;
   const root = input.cwd;
   if (!session || !root) return;
+  if (!Object.hasOwn(hooksConfig(""), input.hook_event_name)) return;
+  return append(root, (state) => hookEvent(input, state));
+}
+
+// Called under the ledger lock: no other hook/link can change the selected
+// case or open turn before this event is durably appended.
+function hookEvent(input, state) {
+  const session = input.session_id;
+  const root = input.cwd;
   const termId = session;
-  const caseId = caseFor(root, termId);
-  const state = readState(root);
-  state.sessions ??= {};
+  const caseId = caseFor(root, termId, state);
 
   switch (input.hook_event_name) {
     case "SessionStart": {
       // Producer-added kind (§1.7): the engine this session runs in and, when
       // Claude Code includes it, the model — the provider facts APE asks for.
-      append(root, {
+      return {
         caseId,
         kind: "session_start",
         termId,
@@ -87,12 +93,11 @@ export function handleHook(input) {
           ...(typeof input.model === "string" && input.model ? { model: input.model } : {}),
           ...(typeof input.source === "string" && input.source ? { source: input.source } : {}),
         },
-      });
-      return;
+      };
     }
     case "PostModelSwitch": {
       const turnId = state.sessions[session]?.turnId;
-      append(root, {
+      return {
         caseId,
         ...(turnId ? { turnId } : {}),
         kind: "model_switch", // producer-added kind (§1.7)
@@ -100,18 +105,15 @@ export function handleHook(input) {
         sessionId: session,
         actor: "system",
         payload: { from: input.from_model ?? null, to: input.to_model ?? null },
-      });
-      return;
+      };
     }
     case "UserPromptSubmit": {
       // A prompt opens a turn; a prompt on a session with an open turn
       // supersedes it (§1.3 — engines don't always emit stop).
       const turnId = crypto.randomUUID();
-      state.sessions[session] = { turnId, lastTs: Date.now() };
-      writeState(root, state);
       const b = bounded(input.prompt ?? "");
       const context = instructionContext(root);
-      append(root, {
+      return {
         caseId,
         turnId,
         kind: "prompt",
@@ -124,13 +126,12 @@ export function handleHook(input) {
           cwd: root,
           ...(context.length ? { context } : {}),
         },
-      });
-      return;
+      };
     }
     case "PreToolUse": {
       const turnId = state.sessions[session]?.turnId;
       const b = bounded(input.tool_input);
-      append(root, {
+      return {
         caseId,
         ...(turnId ? { turnId } : {}),
         kind: "tool_call", // producer-added kind (§1.7): a tool invocation, approval-status unknown
@@ -138,13 +139,12 @@ export function handleHook(input) {
         sessionId: session,
         actor: "agent",
         payload: { tool: input.tool_name ?? "", input: b.text, truncated: b.truncated },
-      });
-      return;
+      };
     }
     case "PostToolUse": {
       const turnId = state.sessions[session]?.turnId;
       const b = bounded(input.tool_response);
-      append(root, {
+      return {
         caseId,
         ...(turnId ? { turnId } : {}),
         kind: "tool_result",
@@ -152,28 +152,12 @@ export function handleHook(input) {
         sessionId: session,
         actor: "agent",
         payload: { tool: input.tool_name ?? "", excerpt: b.text, truncated: b.truncated },
-      });
-      return;
+      };
     }
     case "Stop": {
       const open = state.sessions[session];
-      if (open) {
-        delete state.sessions[session];
-        writeState(root, state);
-      }
       const evidence = transcriptEvidence(input);
-      if (evidence) {
-        append(root, {
-          caseId,
-          ...(open?.turnId ? { turnId: open.turnId } : {}),
-          kind: "external_evidence", // producer-added kind (§1.7)
-          termId,
-          sessionId: session,
-          actor: "system",
-          payload: evidence,
-        });
-      }
-      append(root, {
+      const end = {
         caseId,
         ...(open?.turnId ? { turnId: open.turnId } : {}),
         kind: "turn_end",
@@ -181,8 +165,10 @@ export function handleHook(input) {
         sessionId: session,
         actor: "agent",
         payload: {},
-      });
-      return;
+      };
+      // Both records use the same binding and lock; a new prompt cannot
+      // interleave between the transcript commitment and its turn closure.
+      return evidence ? [{ ...end, kind: "external_evidence", actor: "system", payload: evidence }, end] : end;
     }
     default:
       return; // unknown/unneeded hook events are ignored, never an error
