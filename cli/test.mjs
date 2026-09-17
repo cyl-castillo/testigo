@@ -19,11 +19,15 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), "testigo-cli-test-"));
 process.env.XDG_DATA_HOME = path.join(SANDBOX, "data");
 process.env.XDG_CONFIG_HOME = path.join(SANDBOX, "config");
+// Isolate the export owner's git lookup from the developer's global identity.
+process.env.GIT_CONFIG_GLOBAL = os.devNull;
+process.env.GIT_CONFIG_NOSYSTEM = "1";
 
 // Import AFTER the env is set — lib paths read XDG at call time, but stay safe.
 const { handleHook } = await import("./lib/hook.mjs");
@@ -176,11 +180,16 @@ for (const dir of [path.join(HERE, "..", "conformance", "vectors"), path.join(HE
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"));
   for (const v of manifest.vectors) {
     const got = verifyPacket(JSON.parse(fs.readFileSync(path.join(dir, v.file), "utf8")));
-    // The CLI verifier is a packet verifier, not a session-chain checker: it
-    // does not enforce the migration guards (predicateType / exportedAt).
-    const expectValid = v.expect.valid || ["predicateType", "exportedAt"].includes(v.expect.firstFailure);
-    assert.equal(got.valid, expectValid, `${v.file}: valid`);
-    if (!expectValid) assert.equal(got.firstFailure, v.expect.firstFailure, `${v.file}: firstFailure`);
+    // The CLI implements Testigo only. A draft packet cannot opt itself in.
+    // The draft's wrong-parent-type vector IS a Testigo statement, but lacks
+    // Testigo's required exportedAtMs and therefore fails predicate validation.
+    const draft = Boolean(manifest.enforce);
+    const expected = draft ? { valid: false, firstFailure:
+      v.file === "sc-invalid-payload-type.proofpack.json" ? "payloadType" :
+      v.file === "sc-invalid-statement-type.proofpack.json" ? "statementType" :
+      v.file === "sc-invalid-predicate-type.proofpack.json" ? "predicate" : "predicateType" } : v.expect;
+    assert.equal(got.valid, expected.valid, `${v.file}: valid`);
+    if (!expected.valid) assert.equal(got.firstFailure, expected.firstFailure, `${v.file}: firstFailure`);
     if (v.expect.counts && got.valid) assert.deepEqual(got.counts, { ...got.counts, ...v.expect.counts }, `${v.file}: counts`);
     if (v.expect.timestamp && got.valid) assert.equal(got.timestamp, v.expect.timestamp, `${v.file}: timestamp`);
   }

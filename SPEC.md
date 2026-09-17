@@ -266,16 +266,68 @@ verification failure (a signed-over miscount misrepresents what was withheld).
 
 Producers MUST refuse to export a ledger whose chain does not verify.
 
+### 2.3.1 Profile and structural requirements
+
+The **Testigo profile** requires the exact `format`, DSSE `payloadType`,
+statement `_type`, and `predicateType` shown in §2.1–§2.2. A signature over
+a different type does not make it a Testigo attestation. Verifiers MUST reject
+unsupported types; the packet MUST NOT select a more permissive profile.
+
+The predicate MUST be an object with `project` and `generator` strings,
+integer `exportedAtMs`, a `range` object and an `events` array, as required by
+the published schema. `caseId` is optional (string or null). `ledgerHead` is
+optional and informative: its optional `seq` and `hash` retain the schema's
+integer-or-null and string-or-null types; it need not equal the segment tail.
+For compatibility with the published Testigo schema, omitted
+`redactionCount` means **zero**; a present value MUST be a non-negative
+integer. This default does not permit omitting a nonzero count.
+
+`range` is **inclusive and nonempty**: `fromSeq` and `toSeq` MUST be
+non-negative integers with `fromSeq <= toSeq`, and
+`events.length == toSeq - fromSeq + 1`. Every entry, including redacted
+events and stubs, MUST have `seq == fromSeq + its zero-based array index`.
+Thus the first and last sequences equal the range bounds and no sequence
+can be skipped, duplicated or reordered. The supplied verifiers and schema
+support exact sequence integers through `9007199254740991`; they reject
+larger values rather than verify rounded JSON numbers. A segment may begin
+after zero: its `prevHashBefore` MUST then be a lowercase 64-character
+SHA-256 hex digest. When `fromSeq` is zero it MUST be `"genesis"`.
+
+Each entry MUST match exactly one schema form: `{line, redacted}` with a
+string and a boolean, or `{stub}` with an object. Entry wrappers are closed
+as in the existing schema; unknown predicate fields, ledger fields, stub
+fields and event kinds remain allowed. Parsed lines MUST carry the required
+field types in §1.2, even when redacted; kind-specific payload content remains
+informative. A stub requires `seq`, `prevHash`, and `hash`; its `kind` is
+optional for compatibility with the published schema. Hashes are lowercase
+64-character SHA-256 hex strings; `prevHash` may also be `"genesis"`.
+
+`subject` MUST be a nonempty array of descriptors with a string `name` and
+a nonempty `digest` object with string values. Testigo uses the first
+descriptor's `digest.sha256` for the segment digest (§2.2). Extra descriptors
+and descriptor fields are allowed. The separate session-chain draft has
+different subject/evidence rules; it is not an alias for this profile.
+
+The JSON schema covers predicate structure, not DSSE or statement identity,
+signatures, parsed ledger lines, or cross-field equality. Passing schema
+validation alone MUST NOT be reported as packet verification.
+
 ### 2.4 Verification algorithm
 
 Given a packet, a verifier MUST:
 
-1. Check `format`.
+1. Check `format` and require DSSE `payloadType` to be
+   `application/vnd.in-toto+json` (failures `format`, `payloadType`).
 2. Decode `publicKey`; compute `keyid` = sha256 hex; require it to equal
    `signatures[0].keyid`.
 3. Verify the Ed25519 signature over `PAE(payloadType, payload)`.
-4. Parse the statement; recompute the subject digest over the compact
-   serialization of `predicate.events`; require equality.
+4. Parse the statement; require `_type` = `https://in-toto.io/Statement/v1`
+   and the Testigo `predicateType` from §2.2 (failures `statementType`,
+   `predicateType`). Validate required fields, entry structure, inclusive
+   range and every sequence per §2.3.1 (failures `predicate`, `subject`,
+   `events`, `entry`, `range`, `sequence`, `redactionCount`). Recompute the
+   subject digest over the compact serialization of `predicate.events`;
+   require equality (`digest`).
 5. Walk `events` in order, starting `prev = range.prevHashBefore`. For every
    entry (full, redacted, or stub): require `prevHash == prev`, then set
    `prev = hash`.
@@ -298,6 +350,14 @@ Given a packet, a verifier MUST:
 
 A packet is *valid* when steps 1–6 (including 6c) pass. What validity means
 — and does not mean — is spelled out in §3.
+
+The CLI and browser implement the Testigo profile. The reference verifier
+defaults to Testigo and additionally implements an **explicitly selected**
+session-chain draft profile (`--profile session-chain`); see
+[`predicate/session-chain.md`](predicate/session-chain.md). Its RFC 3339
+`exportedAt`, optional project/generator, required redaction count, and
+artifact/evidence rules MUST NOT be imposed on Testigo packets or silently
+used to accept them as draft packets.
 
 A [conformance suite](conformance/) provides golden vectors isolating each
 step above (and §2.5), plus a reference verifier to run them.

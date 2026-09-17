@@ -6,17 +6,72 @@
 
 import crypto from "node:crypto";
 
+const TESTIGO_TYPE = "https://github.com/cyl-castillo/testigo/attestation/v0.1";
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const isHash = (v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
+const isSeq = (v) => Number.isSafeInteger(v) && v >= 0;
+
+// Validate the signed structure before using it. Unknown predicate/ledger
+// members and event kinds remain additive; entry wrappers retain schema oneOf.
+function checkStructure(st) {
+  if (!isObject(st)) return "payload";
+  if (st._type !== "https://in-toto.io/Statement/v1") return "statementType";
+  if (st.predicateType !== TESTIGO_TYPE) return "predicateType";
+  const p = st.predicate;
+  if (!isObject(p)) return "predicate";
+  if (typeof p.project !== "string" || typeof p.generator !== "string" || !Number.isInteger(p.exportedAtMs)) return "predicate";
+  if (p.caseId !== undefined && p.caseId !== null && typeof p.caseId !== "string") return "predicate";
+  if (p.ledgerHead !== undefined && (!isObject(p.ledgerHead) ||
+      (p.ledgerHead.seq != null && !Number.isInteger(p.ledgerHead.seq)) ||
+      (p.ledgerHead.hash != null && typeof p.ledgerHead.hash !== "string"))) return "predicate";
+  if (p.redactionCount !== undefined &&
+      (!Number.isInteger(p.redactionCount) || p.redactionCount < 0)) return "redactionCount";
+  if (!Array.isArray(st.subject) || !st.subject.length || st.subject.some((s) =>
+      !isObject(s) || typeof s.name !== "string" || !isObject(s.digest) ||
+      !Object.keys(s.digest).length || Object.values(s.digest).some((d) => typeof d !== "string"))) return "subject";
+  if (!Array.isArray(p.events)) return "events";
+  const r = p.range;
+  if (!isObject(r) || !isSeq(r.fromSeq) || !isSeq(r.toSeq) || r.toSeq < r.fromSeq ||
+      p.events.length !== r.toSeq - r.fromSeq + 1 ||
+      (r.fromSeq === 0 ? r.prevHashBefore !== "genesis" : !isHash(r.prevHashBefore))) return "range";
+  for (let i = 0; i < p.events.length; i++) {
+    const e = p.events[i];
+    if (!isObject(e)) return "entry";
+    let v;
+    if (Object.hasOwn(e, "line")) {
+      if (typeof e.line !== "string" || typeof e.redacted !== "boolean" ||
+          Object.keys(e).some((k) => !["line", "redacted"].includes(k))) return "entry";
+      try { v = JSON.parse(e.line); } catch { return "entry"; }
+      if (!isObject(v) || !Number.isInteger(v.ts) || typeof v.caseId !== "string" ||
+          typeof v.kind !== "string" || !["human", "agent", "system"].includes(v.actor) || !isObject(v.payload) ||
+          ["turnId", "termId", "sessionId"].some((k) => v[k] !== undefined && typeof v[k] !== "string")) return "entry";
+    } else {
+      if (!isObject(e.stub) || Object.keys(e).some((k) => k !== "stub")) return "entry";
+      v = e.stub;
+      // kind is optional on legacy stubs, as in the published schema.
+      if (v.kind !== undefined && typeof v.kind !== "string") return "entry";
+    }
+    if (!isSeq(v.seq) || v.seq !== r.fromSeq + i) return "sequence";
+    if (!isHash(v.hash) || !(v.prevHash === "genesis" || isHash(v.prevHash))) return "entry";
+  }
+  return null;
+}
+
 const sha256hex = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
 /// Returns { valid, firstFailure, counts, timestamp, keyId } —
-/// firstFailure ∈ format | keyid | signature | payload | digest | linkage | contentHash
-///   | redactionCount | processContext | timestamps;
+/// Failure codes include profile/structure checks (payloadType, statementType,
+/// predicateType, predicate, subject, events, entry, range, sequence), then
+/// keyid, signature, digest, linkage, contentHash, redactionCount and context.
 /// timestamp ∈ none | declared | mismatch (declared ≠ verified: no CMS here).
 export function verifyPacket(pkt) {
   const fail = (code) => ({ valid: false, firstFailure: code });
 
-  if (pkt.format !== "testigo-proofpack/v0.1") return fail("format");
+  if (!isObject(pkt) || pkt.format !== "testigo-proofpack/v0.1") return fail("format");
 
+  if (!isObject(pkt.envelope) || typeof pkt.publicKey !== "string" ||
+      typeof pkt.envelope.payload !== "string" || !Array.isArray(pkt.envelope.signatures)) return fail("payload");
+  if (pkt.envelope.payloadType !== "application/vnd.in-toto+json") return fail("payloadType");
   const pubRaw = Buffer.from(pkt.publicKey ?? "", "base64");
   const keyId = sha256hex(pubRaw);
   const sigEntry = pkt.envelope?.signatures?.[0] ?? {};
@@ -45,7 +100,9 @@ export function verifyPacket(pkt) {
   } catch {
     return fail("payload");
   }
-  const events = st.predicate?.events ?? [];
+  const structureFailure = checkStructure(st);
+  if (structureFailure) return fail(structureFailure);
+  const events = st.predicate.events;
   if (sha256hex(Buffer.from(JSON.stringify(events), "utf8")) !== (st.subject?.[0]?.digest?.sha256 ?? ""))
     return fail("digest");
 
@@ -70,6 +127,7 @@ export function verifyPacket(pkt) {
     }
     if (prevHash !== prev) return fail("linkage");
     if (typeof e.line === "string" && !e.redacted) {
+      if (!/"hash":"[0-9a-f]{64}"}$/.test(e.line)) return fail("contentHash");
       const idx = e.line.lastIndexOf('"hash":"');
       if (sha256hex(Buffer.from(e.line.slice(0, idx) + '"hash":""}', "utf8")) !== hash)
         return fail("contentHash");
@@ -94,7 +152,7 @@ export function verifyPacket(pkt) {
   if (pred.contextArtifacts !== undefined) {
     if (!Array.isArray(pred.contextArtifacts)) return fail("processContext");
     for (const a of pred.contextArtifacts) {
-      if (!isObj(a) || nonEmpty(a.uri) === nonEmpty(a.data)) return fail("processContext");
+      if (!isObj(a) || (Object.hasOwn(a, "uri") === Object.hasOwn(a, "data") || !nonEmpty(a.uri ?? a.data))) return fail("processContext");
       if (a.digest !== undefined && !(isObj(a.digest) && /^[0-9a-f]{64}$/.test(a.digest.sha256 ?? ""))) return fail("processContext");
       if (a.tags !== undefined && !(Array.isArray(a.tags) && a.tags.every(nonEmpty))) return fail("processContext");
     }
