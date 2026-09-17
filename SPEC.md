@@ -91,9 +91,13 @@ as the final member), take sha256 of those exact UTF-8 bytes, store the hex
 digest as `hash`, then append the line. `prevHash` MUST equal the previous
 line's `hash` (`"genesis"` for the first event).
 
-To recompute from a raw line, replace the *last* occurrence of `"hash":"…"` —
-which is the final member — with `"hash":""` and hash the result. This makes
-verification byte-exact without canonicalization machinery.
+To recompute from a raw line, first require `hash` to be the final member
+and its value to be 64 lowercase hexadecimal characters. Replace only that
+value with the empty string and hash the result, preserving every other byte
+(including whitespace). Verifiers MUST NOT discard or reconstruct the suffix
+of the line: a member appended after `hash`, including a duplicate `payload`,
+must fail verification. This makes verification byte-exact without
+canonicalization machinery.
 
 > **Deployment note:** byte-exactness holds exactly as far as the raw bytes
 > travel intact. Any pipeline that reparses and re-emits ledger lines — log

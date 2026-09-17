@@ -102,8 +102,12 @@ export function verifyPacket(pkt, enforce = {}) {
     }
     if (prevHash !== prev) return fail("linkage");
     if (typeof e.line === "string" && !e.redacted) {
-      const idx = e.line.lastIndexOf('"hash":"');
-      const recomputed = sha256hex(Buffer.from(e.line.slice(0, idx) + '"hash":""}', "utf8"));
+      // A member after hash violates §1.5. Never discard a suffix while
+      // recomputing: all original bytes except the hash value are covered.
+      const field = /("hash"\s*:\s*")([0-9a-f]{64})("\s*}\s*)$/.exec(e.line);
+      if (!field || field[2] !== hash) return fail("contentHash");
+      const unhashed = e.line.slice(0, field.index) + field[1] + field[3];
+      const recomputed = sha256hex(Buffer.from(unhashed, "utf8"));
       if (recomputed !== hash) return fail("contentHash");
       counts.recomputed++;
     }
