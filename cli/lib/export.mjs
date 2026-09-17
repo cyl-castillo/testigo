@@ -186,7 +186,6 @@ export function processContext(parsed, packed, { owner = null, model = null } = 
 export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [], tsa = null, owner = null, model = null }) {
   const pv = preview(root, caseId);
   const { parsed } = readLedger(root);
-  let redactionCount = 0;
   const entries = pv.entries.map((e) => {
     if (e.stub) {
       const raw = parsed[e.seq];
@@ -194,14 +193,14 @@ export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [
     }
     let line = e.line;
     let redacted = e.autoRedacted;
-    if (e.autoRedacted) redactionCount++;
     if (redactSeqs.includes(e.seq)) {
       line = manualRedact(line);
       redacted = true;
-      redactionCount++;
     }
     return { line, redacted };
   });
+  // Count final redacted events once, even when both redaction methods apply.
+  const redactionCount = entries.filter((e) => e.redacted).length;
 
   const eventsBody = JSON.stringify(entries);
   const statement = {

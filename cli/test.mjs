@@ -15,12 +15,14 @@
 // No network: the timestamp path is covered by the conformance vectors.
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), "testigo-cli-test-"));
 process.env.XDG_DATA_HOME = path.join(SANDBOX, "data");
 process.env.XDG_CONFIG_HOME = path.join(SANDBOX, "config");
@@ -149,6 +151,32 @@ assert.deepEqual(
   "full export: the instruction file digest comes from the prompt events (deduplicated)",
 );
 assert.equal(predAll.owner, undefined, "no --owner and no git identity in the sandbox ⇒ owner omitted");
+
+// Redacting the same event automatically and manually counts as ONE event.
+const secretSeq = parsed.find((e) => e.payload?.prompt?.includes("sk-verysecret"))?.seq;
+assert.notEqual(secretSeq, undefined, "fixture contains a secret-bearing event");
+assert.ok(preview(ROOT, null).entries.find((e) => e.seq === secretSeq).autoRedacted);
+const sumOverlap = await exportPacket(ROOT, {
+  outDir: path.join(SANDBOX, "overlap"),
+  redactSeqs: [secretSeq],
+});
+const overlapPacket = JSON.parse(fs.readFileSync(sumOverlap.path, "utf8"));
+const overlapPred = JSON.parse(Buffer.from(overlapPacket.envelope.payload, "base64").toString("utf8")).predicate;
+const redactedEntries = overlapPred.events.filter((e) => e.redacted);
+assert.equal(redactedEntries.length, 1, "one redacted event despite overlapping redaction methods");
+const redactedEvent = JSON.parse(redactedEntries[0].line);
+assert.equal(redactedEvent.seq, secretSeq);
+assert.deepEqual(redactedEvent.payload, { redacted: "manual" }, "manual redaction replaces the auto-redacted payload");
+assert.equal(overlapPred.redactionCount, 1, "signed redaction count counts events, not operations");
+assert.equal(sumOverlap.redactions, overlapPred.redactionCount, "export summary matches signed count");
+for (const [name, verify] of [["cli", verifyPacket], ["conformance", conformance.verifyPacket]]) {
+  const r = verify(overlapPacket);
+  assert.ok(r.valid, `${name}: overlapping redactions still verify (${r.firstFailure})`);
+  assert.equal(r.counts.redacted, sumOverlap.redactions, `${name}: redaction summary agrees`);
+}
+const cliVerdict = JSON.parse(execFileSync(process.execPath, [path.join(HERE, "bin", "testigo.mjs"), "verify-packet", sumOverlap.path], { encoding: "utf8" }));
+assert.ok(cliVerdict.valid, "CLI verify-packet accepts overlapping redactions");
+assert.equal(cliVerdict.counts.redacted, sumOverlap.redactions, "CLI printed summary matches export summary");
 
 // ---- 4. the conformance suite is the CLI verifier's oracle ------------------
 
