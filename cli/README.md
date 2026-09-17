@@ -56,6 +56,19 @@ the events). `--owner login|email` (default: the project's `git config
 user.email`) and `--model provider/name` (the model you asked for) are the
 two things you declare on top.
 
+## External evidence
+
+At every turn end the Stop hook commits the chain to the **Claude Code
+transcript** Claude keeps on disk (path + sha256 of its bytes at that
+moment): the same session transcripts Anthropic's Compliance API serves
+centrally, so an auditor holding the platform's copy can recompute the
+digest and match it. `testigo attach <file-or-url> --source
+anthropic-compliance-api|github-agent-logs|file|url [--note …]` does the same
+for any record you hold: a Compliance API export, a downloaded GitHub agent
+session log, an artefact. The packet carries the commitment, never the
+bytes; the verifier reports it and does not pretend to have checked the
+record (spec §1.7).
+
 ## What this captures — and what it doesn't
 
 Honesty first (it's the protocol's house style):

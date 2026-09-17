@@ -27,6 +27,7 @@ process.env.XDG_CONFIG_HOME = path.join(SANDBOX, "config");
 
 // Import AFTER the env is set — lib paths read XDG at call time, but stay safe.
 const { handleHook } = await import("./lib/hook.mjs");
+const { attachEvidence } = await import("./lib/evidence.mjs");
 const { append, ledgerPath, readLedger, verifyChain } = await import("./lib/ledger.mjs");
 const { exportPacket, preview } = await import("./lib/export.mjs");
 const { verifyPacket } = await import("./lib/verify.mjs");
@@ -50,17 +51,27 @@ hook({ hook_event_name: "PreToolUse", session_id: S1, tool_name: "Bash", tool_in
 hook({ hook_event_name: "UserPromptSubmit", session_id: S2, prompt: "rotate the key sk-verysecretverysecretversecret1" });
 hook({ hook_event_name: "PostModelSwitch", session_id: S1, from_model: "claude-opus-4-8", to_model: "claude-sonnet-5" });
 hook({ hook_event_name: "PostToolUse", session_id: S1, tool_name: "Bash", tool_response: "Everything up-to-date" });
-hook({ hook_event_name: "Stop", session_id: S1 });
+// Claude Code hands hooks the session transcript path: Stop commits to its bytes.
+const TRANSCRIPT = path.join(SANDBOX, "transcript.jsonl");
+const TRANSCRIPT_BODY = '{"type":"user","message":"deploy the release"}\n{"type":"assistant","message":"done"}\n';
+fs.writeFileSync(TRANSCRIPT, TRANSCRIPT_BODY);
+hook({ hook_event_name: "Stop", session_id: S1, transcript_path: TRANSCRIPT });
 hook({ hook_event_name: "Stop", session_id: S2 });
 // Unknown hook events must be ignored, never recorded or thrown.
 hook({ hook_event_name: "SomethingNew", session_id: S1 });
 
 let { parsed } = readLedger(ROOT);
-assert.equal(parsed.length, 8, "8 events captured");
+assert.equal(parsed.length, 9, "9 events captured");
 assert.deepEqual(
   parsed.map((e) => e.kind),
-  ["session_start", "prompt", "tool_call", "prompt", "model_switch", "tool_result", "turn_end", "turn_end"],
+  ["session_start", "prompt", "tool_call", "prompt", "model_switch", "tool_result", "external_evidence", "turn_end", "turn_end"],
 );
+assert.deepEqual(
+  parsed[6].payload,
+  { source: "claude-code-transcript", uri: TRANSCRIPT, sha256: crypto.createHash("sha256").update(TRANSCRIPT_BODY).digest("hex"), bytes: Buffer.byteLength(TRANSCRIPT_BODY) },
+  "turn end commits to the transcript bytes",
+);
+assert.equal(parsed[6].turnId, parsed[1].turnId, "the evidence belongs to the turn that just ended");
 assert.deepEqual(parsed[0].payload, { engine: "claude-code", model: "claude-opus-4-8", source: "startup" });
 assert.equal(parsed[1].caseId, `term:${S1}`, "case falls back to term:<session>");
 assert.deepEqual(parsed[1].payload.context, [{ uri: "CLAUDE.md", sha256: INSTRUCTIONS_SHA }], "prompt carries the instruction-file digest");
@@ -78,9 +89,18 @@ hook({ hook_event_name: "UserPromptSubmit", session_id: S1, prompt: "second turn
 hook({ hook_event_name: "UserPromptSubmit", session_id: S2, prompt: "interleaved other-case work" });
 hook({ hook_event_name: "Stop", session_id: S1 });
 hook({ hook_event_name: "Stop", session_id: S2 });
+// An operator attaches a platform export to the case (e.g. Anthropic's
+// Compliance API record of the same session), bound by terminal.
+const EXPORT = path.join(SANDBOX, "compliance-export.json");
+fs.writeFileSync(EXPORT, JSON.stringify({ session: S1, transcript: TRANSCRIPT_BODY }));
+const attached = await attachEvidence(ROOT, { target: EXPORT, source: "anthropic-compliance-api", note: "org export, session " + S1, termId: S1 });
+assert.equal(attached.caseId, "jira:CONF-9", "attached evidence binds to the terminal's case");
+assert.equal(attached.payload.sha256, crypto.createHash("sha256").update(fs.readFileSync(EXPORT)).digest("hex"));
+assert.equal(attached.payload.note, "org export, session " + S1);
+await assert.rejects(attachEvidence(ROOT, { target: EXPORT, source: "bogus" }), /unknown source/);
 ({ parsed } = readLedger(ROOT));
 const linked = parsed.filter((e) => e.caseId === "jira:CONF-9");
-assert.deepEqual(linked.map((e) => e.kind), ["case_link", "prompt", "turn_end"], "post-link S1 events carry the case");
+assert.deepEqual(linked.map((e) => e.kind), ["case_link", "prompt", "turn_end", "external_evidence"], "post-link S1 events carry the case");
 assert.ok(verifyChain(ROOT).ok, "chain verifies");
 
 // Torn tail: simulate a crash mid-append, then witness again — healed.
@@ -167,4 +187,4 @@ for (const dir of [path.join(HERE, "..", "conformance", "vectors"), path.join(HE
 }
 
 fs.rmSync(SANDBOX, { recursive: true, force: true });
-console.log("testigo-cli: all e2e assertions pass (capture, link, heal, export, redact, process context, verify ×2, conformance + session-chain vectors)");
+console.log("testigo-cli: all e2e assertions pass (capture, transcript evidence, attach, link, heal, export, redact, process context, verify ×2, conformance + session-chain vectors)");

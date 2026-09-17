@@ -26,6 +26,24 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+/// Claude Code hands every hook the path of the session transcript it keeps
+/// on disk. At turn end we commit the chain to those bytes: the same session
+/// transcripts Anthropic's Compliance API serves centrally to Enterprise
+/// orgs, so an auditor holding the platform's copy can recompute the digest
+/// and match it to the packet. Digest of the file as it was at turn end —
+/// the transcript keeps growing afterwards; keep a copy if you need to
+/// reproduce it later.
+function transcriptEvidence(input) {
+  const p = input.transcript_path;
+  if (typeof p !== "string" || !p) return null;
+  try {
+    const buf = fs.readFileSync(p);
+    return { source: "claude-code-transcript", uri: p, sha256: sha256hex(buf), bytes: buf.length };
+  } catch {
+    return null;
+  }
+}
+
 /// Instruction files an agent reads implicitly. Hashed at prompt time —
 /// the bytes the agent actually ran under, not whatever is on disk later.
 export const INSTRUCTION_FILES = ["CLAUDE.md", ".claude/CLAUDE.md", "AGENTS.md"];
@@ -142,6 +160,18 @@ export function handleHook(input) {
       if (open) {
         delete state.sessions[session];
         writeState(root, state);
+      }
+      const evidence = transcriptEvidence(input);
+      if (evidence) {
+        append(root, {
+          caseId,
+          ...(open?.turnId ? { turnId: open.turnId } : {}),
+          kind: "external_evidence", // producer-added kind (§1.7)
+          termId,
+          sessionId: session,
+          actor: "system",
+          payload: evidence,
+        });
       }
       append(root, {
         caseId,
