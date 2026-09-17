@@ -235,6 +235,33 @@ prompt time.
 
 ### Verification
 
+**Explicit profile selection.** This is a distinct draft profile, not an
+alternative spelling of Testigo. In the supplied reference verifier use
+`node conformance/verify.mjs --profile session-chain packet.json`, or call
+`verifyPacket(packet, {predicateType: "https://in-toto.io/attestation/session-chain/v0.1"})`.
+Selecting the profile enables **all** its rules, including `exportedAt`;
+the manifest's legacy `exportedAt` flag is informative. The default reference
+mode, CLI and browser implement Testigo and reject this URI.
+
+Both profiles require the DSSE payload type `application/vnd.in-toto+json`,
+in-toto Statement v1 `_type`, structural and contiguous-range rules in
+Testigo SPEC §2.3.1, and the cryptographic checks below. This draft differs
+in these ways: its exact predicate URI is required; `exportedAt` MUST be a
+calendar-valid UTC RFC 3339 timestamp, not merely a regex-shaped string;
+`project` and `generator` are optional strings; `exportedAtMs` is not required;
+and `redactionCount` is required, with no missing-value default. Unknown
+predicate fields remain allowed, including `exportedAtMs` if a producer
+includes it alongside the required `exportedAt`.
+
+For digest verification, absent `evidence` means the subject descriptors
+describe the segment and each `digest.sha256` MUST match the segment digest.
+When `evidence` is present it MUST have a string `name` and matching
+`digest.sha256`; subjects may instead describe produced artifacts. A subject
+with the same name as the evidence descriptor repeats the segment descriptor
+and its digest MUST match too. Artifact digests are signed assertions, not
+recomputed from ledger bytes. This makes the existing subject/evidence rule
+explicit for verification; it does not establish that an artifact was built.
+
 A verifier of **this** predicate MUST: (0) require `predicateType` to equal
 this document's Type URI and `exportedAt` to parse as RFC 3339 — the two
 fields that distinguish this predicate from its testigo v0.1 parent (the
