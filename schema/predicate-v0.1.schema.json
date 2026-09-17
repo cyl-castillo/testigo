@@ -39,17 +39,46 @@
       "properties": {
         "fromSeq": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "toSeq": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9007199254740991
         },
         "prevHashBefore": {
           "type": "string",
-          "description": "hash of the event before fromSeq; \"genesis\" when fromSeq is 0."
+          "description": "hash of the event before fromSeq; \"genesis\" when fromSeq is 0.",
+          "pattern": "^(genesis|[0-9a-f]{64})$"
         }
-      }
+      },
+      "description": "Nonempty inclusive segment; events.length = toSeq - fromSeq + 1. Each event/stub seq = fromSeq + index. These cross-field constraints require semantic verification.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "fromSeq": {
+                "const": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "prevHashBefore": {
+                "const": "genesis"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "prevHashBefore": {
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      ]
     },
     "ledgerHead": {
       "type": "object",
@@ -71,7 +100,9 @@
     },
     "redactionCount": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 0,
+      "default": 0,
+      "description": "Legacy Testigo omission means zero; must equal the number of redacted:true entries. Session-chain instead requires this field."
     },
     "provider": {
       "type": "object",
@@ -155,7 +186,10 @@
                 "type": "string",
                 "pattern": "^[0-9a-f]{64}$"
               }
-            }
+            },
+            "required": [
+              "sha256"
+            ]
           }
         },
         "oneOf": [
@@ -233,13 +267,17 @@
                 ],
                 "properties": {
                   "seq": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
                   },
                   "prevHash": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^(genesis|[0-9a-f]{64})$"
                   },
                   "hash": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
                   },
                   "kind": {
                     "type": "string"
@@ -250,7 +288,8 @@
             "additionalProperties": false
           }
         ]
-      }
+      },
+      "minItems": 1
     }
   },
   "dependentRequired": {
@@ -260,5 +299,7 @@
     "endTimestamp": [
       "startTimestamp"
     ]
-  }
+  },
+  "$comment": "Testigo predicate only, not an envelope/statement schema. SPEC §2.4 additionally requires profile identity, digest/signature verification, inclusive range length, seq = fromSeq + index for every entry (including parsed lines), genesis anchoring, linkage, hashes and redaction count. Unknown predicate fields are allowed. Session-chain uses a distinct explicit profile.",
+  "additionalProperties": true
 }
