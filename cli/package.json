@@ -15,7 +15,7 @@
     "commands"
   ],
   "scripts": {
-    "test": "node test.mjs"
+    "test": "node test.mjs && node test-concurrency.mjs"
   },
   "engines": {
     "node": ">=20"
