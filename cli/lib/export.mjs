@@ -245,18 +245,52 @@ export function writeReview(root, { outDir, ...options }) {
   return { path: file, statement };
 }
 
-/// Sign the saved review bytes, without rereading the ledger, git identity,
-/// or clock. --yes without a review remains an explicit unattended export.
+/// Check provenance against one freshly verified ledger snapshot without
+/// regenerating any reviewed bytes or metadata. Redacted content remains a
+/// producer assertion; its original seq/prevHash/hash must still exist.
+function requireReviewProvenance(root, statement) {
+  const { lines, parsed } = readVerifiedLedger(root);
+  const { events, range, ledgerHead, project, caseId } = statement.predicate;
+  const fail = (reason) => {
+    throw new Error(`review does not match current ledger (${reason}) — regenerate the pre-sign review`);
+  };
+  if (project !== path.basename(path.resolve(root))) fail("project");
+  if (!Number.isSafeInteger(range?.fromSeq) || range.fromSeq < 0 ||
+      !Number.isSafeInteger(range?.toSeq) || range.toSeq < range.fromSeq ||
+      range.toSeq - range.fromSeq + 1 !== events.length) fail("range");
+  for (const [i, entry] of events.entries()) {
+    const seq = range.fromSeq + i;
+    const raw = parsed[seq];
+    const hasLine = typeof entry?.line === "string";
+    const reviewed = hasLine ? JSON.parse(entry.line) : entry?.stub;
+    if (!raw || reviewed?.seq !== seq || reviewed.hash !== raw.hash || reviewed.prevHash !== raw.prevHash) {
+      fail(`linkage at seq ${seq}`);
+    }
+    if (hasLine !== (caseId === null || raw.caseId === caseId)) fail(`case selection at seq ${seq}`);
+    if (hasLine && entry.redacted !== true && entry.line !== lines[seq]) fail(`content at seq ${seq}`);
+    if (!hasLine && reviewed.kind !== raw.kind) fail(`stub kind at seq ${seq}`);
+  }
+  if (range.prevHashBefore !== parsed[range.fromSeq].prevHash) fail("range anchor");
+  // The saved head can precede today's tail: appends are expected while
+  // reviewing. It must still be present, including when outside the range.
+  if (!Number.isSafeInteger(ledgerHead?.seq) || ledgerHead.seq < range.toSeq ||
+      parsed[ledgerHead.seq]?.hash !== ledgerHead.hash) fail("snapshot head");
+}
+
+/// Sign saved review bytes only after checking their ledger provenance.
+/// Do not regenerate the statement, git identity, or export time.
+/// --yes without a review remains an explicit unattended export.
 export async function exportPacket(root, { outDir, tsa = null, reviewFile = null, ...options }) {
   const payload = reviewFile
     ? fs.readFileSync(reviewFile)
     : Buffer.from(JSON.stringify(prepareStatement(root, options)), "utf8");
   const statement = JSON.parse(payload.toString("utf8"));
-  if (statement._type !== STATEMENT_TYPE || statement.predicateType !== PREDICATE_TYPE ||
+  if (statement?._type !== STATEMENT_TYPE || statement.predicateType !== PREDICATE_TYPE ||
       !Array.isArray(statement.predicate?.events) || !statement.predicate.events.length ||
       !(statement.predicate.caseId === null || typeof statement.predicate.caseId === "string")) {
     throw new Error("invalid review statement — regenerate the pre-sign review");
   }
+  if (reviewFile) requireReviewProvenance(root, statement);
   const { caseId, events: entries, redactionCount } = statement.predicate;
   const { priv, pubRaw, keyId } = keys(loadOrCreateSeed());
   const pae = Buffer.concat([

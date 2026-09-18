@@ -9,7 +9,7 @@ import process from "node:process";
 
 import { append, caseFor, ledgerPath, readLedger, readState, verifyChain, writeState } from "../lib/ledger.mjs";
 import { handleHook, hooksConfig } from "../lib/hook.mjs";
-import { exportPacket, keyInfo, writeReview } from "../lib/export.mjs";
+import { exportPacket, keyInfo, prepareStatement, writeReview } from "../lib/export.mjs";
 import { attachEvidence, SOURCES } from "../lib/evidence.mjs";
 import { verifyPacket } from "../lib/verify.mjs";
 
@@ -41,10 +41,15 @@ usage: testigo <command> [options]
         Walk the project ledger's hash chain.
   export [--case ID] [--out DIR] [--redact s1,s2] [--tsa URL] [--yes] [--root DIR]
          [--owner LOGIN|EMAIL] [--model PROVIDER/NAME]
-  export --review FILE [--yes] [--out DIR] [--tsa URL]
+  export --review FILE [--yes] [--out DIR] [--tsa URL] [--root DIR]
+  export --review - [--case ID] [--redact s1,s2] [--owner LOGIN|EMAIL]
+         [--model PROVIDER/NAME] [--root DIR]
         Without --yes, save a complete unsigned statement for review.
         Open that file, or use --review FILE to print it in full. Then use
-        --review FILE --yes to sign those exact bytes. New redactions or
+        --review FILE --yes to sign those exact bytes after matching them
+        against the verified project ledger (use the same --root).
+        --review - prints a fresh statement without writing a file; it
+        cannot be combined with --yes. New redactions or
         declarations require a new review. --yes alone skips review and
         exports the current ledger. --tsa requests an RFC 3161 timestamp
         (e.g. https://freetsa.org/tsr; sends the TSA a signature hash only).
@@ -202,7 +207,8 @@ switch (cmd) {
   case "export": {
     const reviewFile = opt("--review", null);
     if (flag("--review") && (!reviewFile || reviewFile.startsWith("--"))) die("--review requires a file path");
-    if (reviewFile && ["--case", "--redact", "--owner", "--model"].some(flag)) {
+    if (reviewFile === "-" && flag("--yes")) die("--review - is print-only; save and inspect a review file before signing");
+    if (reviewFile && reviewFile !== "-" && ["--case", "--redact", "--owner", "--model"].some(flag)) {
       die("--review already fixes content and metadata; omit --review and generate a new review to change them");
     }
     const caseId = opt("--case", null);
@@ -215,6 +221,10 @@ switch (cmd) {
     const owner = opt("--owner", null);
     const model = opt("--model", null);
     if (!flag("--yes")) {
+      if (reviewFile === "-") {
+        process.stdout.write(JSON.stringify(prepareStatement(ROOT, { caseId, redactSeqs, owner, model }), null, 2) + "\n");
+        break;
+      }
       if (reviewFile) {
         process.stdout.write(fs.readFileSync(reviewFile));
         break;
@@ -228,7 +238,7 @@ switch (cmd) {
         `\nThis summary is not the review. To print the complete file: export --review "${review.path}"` +
         `\nTo change payload redactions, rerun the original export with --redact seq,seq and inspect the NEW review.` +
         `\nManual redaction keeps event metadata (including paths or identifiers outside payload).` +
-        `\nAfter review, sign the saved bytes: export --review "${review.path}" --yes --out "${outDir}"${tsa ? ` --tsa "${tsa}"` : ""}` +
+        `\nAfter review, sign the saved bytes: export --review "${review.path}" --yes --root "${ROOT}" --out "${outDir}"${tsa ? ` --tsa "${tsa}"` : ""}` +
         `\nSigning adds the public key and signature; optional --tsa adds a timestamp outside the signed statement.`,
       );
       break;

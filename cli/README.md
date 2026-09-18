@@ -60,18 +60,39 @@ and signed metadata without clipping. Event `line` strings preserve the
 exact serialized event text; an editor's word wrap helps with long lines.
 Review creates no signing key, signature, or TSA request.
 
-`export --review FILE --yes` signs the file's exact bytes. Events captured
-while you review, changes to git identity, and elapsed time do not change
-the statement; `exportedAtMs` records when the snapshot was prepared.
+For a read-only look, `export --review -` prints a fresh complete
+post-redaction statement to stdout without creating a review file or output
+directory. It accepts `--case`, `--redact`, `--owner`, and `--model` like a
+normal export. It cannot be combined with `--yes`; to sign later, generate
+and inspect a saved review using the normal export command.
+
+`export --review FILE --yes` signs the file's exact bytes **after verifying
+the current project ledger and matching the reviewed records against it**.
+Use the same project directory or `--root DIR` used to prepare the review.
+Every event and stub must retain its original `seq`, `prevHash`, and `hash`;
+unredacted event lines must also match byte-for-byte. The range and saved
+ledger-head anchor must still match. Redacted payloads remain producer
+assertions: the check establishes their original ledger linkage, not their
+hidden contents. These provenance checks run before the signing key is loaded.
+
+Valid events appended while you review do not invalidate the snapshot.
+A missing ledger, a broken chain, or missing/replaced reviewed records
+prevent signing; a self-consistent review file alone is insufficient.
+The signed statement is never regenerated: changes to git identity and
+elapsed time do not alter it, and `exportedAtMs` still records when the
+snapshot was prepared.
 Changing `--case`, `--redact`, `--owner`, or `--model` requires generating
 and inspecting a new review. Signing adds the public key and signature;
 `--tsa` on the signing command adds a TSA response outside the statement.
 For unattended use, `export ... --yes` without `--review` still exports
 the current ledger directly and **skips review**.
 
-Review files contain the retained content and stay local until you remove
-them, including earlier versions made before additional redactions. Treat
-them like the packets themselves; do not commit or share them unintentionally.
+Plain `export` writes a new review file on every call. Review files contain
+the **post-redaction** statement and stay local until you remove them,
+including earlier versions made before additional redactions. Post-redaction
+does not mean safe to retain or share: patterns can miss sensitive text,
+and retained metadata can still be private. Treat these files like the
+packets themselves; do not commit or share them unintentionally.
 Manual redaction does not remove identifiers or paths outside a payload;
 inspect the remaining metadata before deciding to sign.
 
@@ -130,6 +151,8 @@ independent one — and requires the CLI verifier to reproduce the manifest
 verdict on **every conformance vector**. CLI regression tests inspect long
 prompt/tool content, metadata, automatic plus requested redactions, and
 byte-for-byte equality between the saved review and the signed payload
-after ledger and identity changes. Concurrent hook appends are
+after valid ledger appends and identity changes. They also check print-only
+review and signing refusal for missing, corrupt, or replaced ledger records,
+unrelated review files, and altered event/stub linkage. Concurrent hook appends are
 serialized by an advisory lock (parallel tool calls are real; a fork in the
 chain would be corruption).
