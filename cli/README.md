@@ -98,6 +98,19 @@ all preceding bytes. Unparseable newline-terminated records (including two
 concatenated events) are corruption and stop reading/appending without repair.
 Whitespace-only lines remain ignored and their bytes are preserved.
 
+To detect a ledger damaged by the old concatenation bug, run `testigo verify`
+in the project (or pass `--root DIR`). It exits nonzero and reports the
+offending physical line's zero-based index, including blank lines in the
+count. Hooks still exit 0 on errors and show diagnostics only with
+`TESTIGO_DEBUG=1`, so recording remains blocked until the ledger is repaired.
+There is no automatic repair command for this corruption. Stop writers and
+back up the project's ledger before repairing it manually: insert a single
+newline at the `}{` boundary between the two complete event objects, preserving
+all other bytes. Do not replace every `}{`: that text can also occur inside a
+payload string. Run `testigo verify` again to check the restored hashes and
+chain before resuming capture. Events already discarded by the old recovery
+cannot be restored by splitting a line.
+
 Appends resume short writes at byte offsets and sync the complete record and
 newline before returning success. Write or sync failures propagate; a fully
 written event can remain even if append reports failure, and recovery retains
