@@ -6,7 +6,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { hookCommand } from "./lib/command.mjs";
 
 const REPO = fileURLToPath(new URL("../", import.meta.url));
 const TEMP = fs.mkdtempSync(path.join(os.tmpdir(), "testigo-portability-"));
@@ -80,21 +81,114 @@ test("init merges settings and remains idempotent with quoted commands", () => {
   fs.mkdirSync(path.dirname(settings), { recursive: true });
   const existing = { permissions: { allow: [] }, hooks: { Stop: [{ hooks: [{ type: "command", command: "echo existing" }] }] } };
   fs.writeFileSync(settings, JSON.stringify(existing));
-  cli(["init", "--root", root]);
+  assert.match(cli(["init", "--root", root]), /installed 6 entries/);
   assert.deepEqual(readJSON(`${settings}.bak`), existing);
   const once = readJSON(settings);
-  cli(["init", "--root", root]);
+  assert.match(cli(["init", "--root", root]), /already installed/);
   assert.deepEqual(readJSON(settings), once);
+  assert.deepEqual(readJSON(`${settings}.bak`), existing, "a no-op preserves the migration backup");
   assert.deepEqual(once.permissions, existing.permissions);
   assert.equal(once.hooks.Stop.length, 2);
   const override = 'node "C:\\custom path\\hook.mjs" --literal \'quoted\'';
   for (let i = 0; i < 2; i++) cli(["init", "--root", root, "--shell", "powershell", "--command", override]);
   const hooks = readJSON(settings).hooks.Stop;
-  assert.equal(hooks.length, 3);
+  assert.equal(hooks.length, 2, "an explicit command override replaces this CLI's generated hooks");
   assert.deepEqual(hooks.at(-1).hooks[0], { type: "command", command: override, shell: "powershell" });
   const rejected = spawnSync(process.execPath, [CLI, "init", "--print", "--shell", "cmd"], { env, encoding: "utf8" });
   assert.equal(rejected.status, 1);
   assert.match(rejected.stderr, /--shell must be bash or powershell/);
+});
+
+function seedSettings(root, hooks) {
+  const settings = path.join(root, ".claude/settings.json");
+  fs.mkdirSync(path.dirname(settings), { recursive: true });
+  const original = { permissions: { allow: [] }, hooks };
+  fs.writeFileSync(settings, JSON.stringify(original));
+  return { settings, original };
+}
+
+const prePRCommand = `node ${path.resolve(pathToFileURL(CLI).pathname)} hook`;
+for (const [shell, executable, flags] of [
+  ["bash", bash, ["-c"]],
+  ["powershell", powershell, ["-NoProfile", "-NonInteractive", "-Command"]],
+]) {
+  test(`pre-PR settings migrate to ${shell} with one capture per event`,
+    { skip: !executable && `${shell} is not available on this host` }, () => {
+      const root = path.join(TEMP, `upgrade ${shell}`);
+      // Exactly the old settings shape and URL-path construction, including
+      // percent encoding and the broken Windows drive prefix.
+      const { settings, original } = seedSettings(root, Object.fromEntries(events.map((event) =>
+        [event, [{ hooks: [{ type: "command", command: prePRCommand }] }]])));
+      const options = ["init", "--root", root, "--shell", shell];
+      assert.match(cli(options), /replaced 6 legacy entries/);
+      assert.deepEqual(readJSON(`${settings}.bak`), original);
+      const upgraded = readJSON(settings);
+      for (const event of events) {
+        const handlers = upgraded.hooks[event].flatMap((group) => group.hooks);
+        assert.equal(handlers.length, 1, event);
+        assert.equal(handlers[0].shell, shell);
+        run(executable, [...flags, handlers[0].command], {
+          input: JSON.stringify({ cwd: root, hook_event_name: event, session_id: shell,
+            prompt: "one migrated prompt", model: "test-model", from_model: "before", to_model: "after",
+            tool_name: "Bash", tool_input: { command: "echo test" }, tool_response: "test" }),
+        });
+      }
+      assert.match(cli(["verify", "--root", root]), /chain ok: 6 events/);
+      assert.equal(cli(["log", "--root", root]).split("one migrated prompt").length - 1, 1);
+      assert.match(cli(options), /already installed/);
+      assert.deepEqual(readJSON(settings), upgraded);
+      assert.deepEqual(readJSON(`${settings}.bak`), original);
+    });
+}
+
+test("init recognizes literal quoting, script path aliases, and different Node locations", () => {
+  const root = path.join(TEMP, "literal variants");
+  const native = (s) => process.platform === "win32" ? s.replaceAll("\\", "/") : s;
+  const doubleQuote = (s) => `"${s.replace(/[\\"$`]/g, "\\$&")}"`;
+  const oldNode = path.join(TEMP, "removed node version", "node");
+  const handlers = [
+    { command: prePRCommand },
+    { command: hookCommand(oldNode, CLI) },
+    { command: `${doubleQuote(native(oldNode))} ${doubleQuote(native(CLI))} hook` },
+    { command: hookCommand(oldNode + ".exe", CLI, "powershell"), shell: "powershell" },
+    { command: hookCommand("nodejs", path.relative(root, CLI)) },
+    { command: hookCommand("node", `${path.dirname(CLI)}/../bin/testigo.mjs`) },
+  ];
+  const { settings } = seedSettings(root, Object.fromEntries(events.map((event, i) =>
+    [event, [{ hooks: [{ type: "command", ...handlers[i] }] }]])));
+  assert.match(cli(["init", "--root", root]), /replaced 6 legacy entries/);
+  const expected = JSON.parse(cli(["init", "--print"]));
+  assert.deepEqual(readJSON(settings).hooks, expected.hooks);
+});
+
+test("init repairs mixed legacy/current duplicates without removing unrelated hooks or scopes", () => {
+  const root = path.join(TEMP, "mixed duplicates");
+  const current = JSON.parse(cli(["init", "--print"])).hooks.Stop[0].hooks[0];
+  const legacy = { type: "command", command: prePRCommand, timeout: 20 };
+  const unrelated = [
+    { type: "command", command: "echo keep" },
+    { type: "command", command: `echo '${CLI}' hook` },
+    { type: "command", command: `${current.command} && echo keep` },
+    { type: "command", command: `env EXTRA=1 ${current.command}` },
+    { type: "command", command: 'node "$TESTIGO_SCRIPT" hook' },
+    { type: "command", command: `${current.command} --extra` },
+    { type: "command", command: hookCommand("node", path.join(TEMP, "other/bin/testigo.mjs")) },
+    { ...current, args: ["custom-exec-form"] },
+  ];
+  const restricted = { matcher: "Bash", hooks: [legacy] };
+  const conditional = { if: "Bash(git *)", hooks: [legacy] };
+  const { settings, original } = seedSettings(root, Object.fromEntries(events.map((event) => [event, [
+    { hooks: [...unrelated, legacy] }, { hooks: [current] }, { matcher: "*", hooks: [legacy] },
+    restricted, conditional,
+  ]])));
+  assert.match(cli(["init", "--root", root]), /replaced 6 legacy entries; removed 12 duplicate entries/);
+  for (const event of events) {
+    assert.deepEqual(readJSON(settings).hooks[event], [
+      { hooks: [...unrelated, { ...legacy, ...current }] }, restricted, conditional,
+    ]);
+  }
+  assert.deepEqual(readJSON(`${settings}.bak`), original);
+  assert.match(cli(["init", "--root", root]), /already installed/);
 });
 
 test("--user uses the platform home rather than the working directory", () => {
