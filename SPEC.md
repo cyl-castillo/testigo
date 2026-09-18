@@ -522,3 +522,28 @@ verifiers MUST reject predicate types they don't implement. Ledger-level additio
 predicate-level optional members (§2.6) are non-breaking: verifiers MUST
 ignore unknown predicate fields and unknown kinds. v0.2 is such an addition
 and keeps the v0.1 type URI.
+
+### Verification changes
+
+The profile and structural checks in §2.3.1–§2.4 are **verifier-side
+tightenings**, not additive format changes under this section. Previously
+accepted signed packets with a wrong statement type, missing required fields,
+empty events, inconsistent ranges/sequences, or extra entry-wrapper keys now
+fail verification. Packets produced by the reference implementation and the
+CLI are unaffected. Serialization and predicate URIs are unchanged, so no
+format or predicate version bump is required; allowed additive fields and
+unknown event kinds remain valid.
+
+The new `firstFailure` codes are `payloadType`, `statementType`, `predicate`,
+`subject`, `events`, `entry`, `range`, and `sequence`. The reference API also
+adds `profile` for an unsupported caller-selected profile. The existing
+`predicateType` check now applies in default Testigo verification (including
+the CLI); selecting the session-chain draft always enforces its existing
+`exportedAt` check, including calendar validity. Existing `redactionCount`
+and `processContext` codes cover the corresponding structural tightenings.
+
+The browser's RFC 3161 handling is a **loosening**: an undecodable token or
+an imprint mismatch is now a warning rather than a packet failure, matching
+the CLI and reference verifier's informative timestamp handling (§2.5).
+This does not establish CMS signature validity or TSA trust; the timestamp
+is not cryptographically verified by these checks.
