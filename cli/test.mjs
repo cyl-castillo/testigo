@@ -19,11 +19,15 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), "testigo-cli-test-"));
 process.env.XDG_DATA_HOME = path.join(SANDBOX, "data");
 process.env.XDG_CONFIG_HOME = path.join(SANDBOX, "config");
+// The owner-omission assertion must not inherit the developer's Git identity.
+process.env.GIT_CONFIG_GLOBAL = os.devNull;
+process.env.GIT_CONFIG_NOSYSTEM = "1";
 
 // Import AFTER the env is set — lib paths read XDG at call time, but stay safe.
 const { handleHook } = await import("./lib/hook.mjs");

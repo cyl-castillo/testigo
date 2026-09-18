@@ -94,7 +94,7 @@ Honesty first (it's the protocol's house style):
 
 ## Correctness
 
-`node test.mjs` runs the end-to-end suite: hook capture (including
+`npm test` runs the tail-recovery regression tests and the end-to-end suite: hook capture (including
 interleaved sessions and a crash-torn tail healing), case linking, export
 with auto + manual redaction and out-of-case stubs, verification by both
 this CLI's verifier and the [conformance suite's](../conformance/)
@@ -102,3 +102,29 @@ independent one — and requires the CLI verifier to reproduce the manifest
 verdict on **every conformance vector**. Concurrent hook appends are
 serialized by an advisory lock (parallel tool calls are real; a fork in the
 chain would be corruption).
+
+Ledger reads never modify the file. A complete final JSON record without a
+newline is retained; the next append adds and syncs its separator first. An
+unparseable final fragment without a newline is reported as a torn tail;
+the next append truncates only that fragment and syncs the repair, preserving
+all preceding bytes. Unparseable newline-terminated records (including two
+concatenated events) are corruption and stop reading/appending without repair.
+Whitespace-only lines remain ignored and their bytes are preserved.
+
+To detect a ledger damaged by the old concatenation bug, run `testigo verify`
+in the project (or pass `--root DIR`). It exits nonzero and reports the
+offending physical line's zero-based index, including blank lines in the
+count. Hooks still exit 0 on errors and show diagnostics only with
+`TESTIGO_DEBUG=1`, so recording remains blocked until the ledger is repaired.
+There is no automatic repair command for this corruption. Stop writers and
+back up the project's ledger before repairing it manually: insert a single
+newline at the `}{` boundary between the two complete event objects, preserving
+all other bytes. Do not replace every `}{`: that text can also occur inside a
+payload string. Run `testigo verify` again to check the restored hashes and
+chain before resuming capture. Events already discarded by the old recovery
+cannot be restored by splitting a line.
+
+Appends resume short writes at byte offsets and sync the complete record and
+newline before returning success. Write or sync failures propagate; a fully
+written event can remain even if append reports failure, and recovery retains
+it. Retrying an unsuccessful append is therefore not an exactly-once operation.
