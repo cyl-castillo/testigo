@@ -15,6 +15,11 @@ statement BEFORE anything is signed, then sign that exact saved snapshot.
 node "${CLAUDE_PLUGIN_ROOT}/bin/testigo.mjs" export --root "${CLAUDE_PROJECT_DIR}" [--case <caseId>] [--owner <owner>] [--model <model>] [--redact seq,seq]
 ```
 
+   If the user only wants to inspect content without saving a review, add
+   `--review -` to print the complete post-redaction statement. This creates
+   no review file and cannot be combined with `--yes`. To sign later,
+   generate and inspect a saved review as described below.
+
 2. The command reports the path to a complete unsigned JSON statement.
    Open/read that file and give the user its path so they can inspect it in
    an editor. It contains every final event line and stub, after automatic
@@ -38,6 +43,8 @@ node "${CLAUDE_PLUGIN_ROOT}/bin/testigo.mjs" export --review "<review-file>"
    with all intended options, inspect the NEW file, and ask for confirmation
    of that version. Do not edit the saved statement directly. Earlier
    review files remain local and may contain content removed in later ones.
+   They contain post-redaction content, but retained text and metadata may
+   still be sensitive; they are not automatically safe to retain or share.
 
 3. Only after their explicit confirmation of the final file, sign and write
    that file. Use the exact returned review path; do not rerun a live-ledger
@@ -46,6 +53,12 @@ node "${CLAUDE_PLUGIN_ROOT}/bin/testigo.mjs" export --review "<review-file>"
 ```
 node "${CLAUDE_PLUGIN_ROOT}/bin/testigo.mjs" export --root "${CLAUDE_PROJECT_DIR}" --review "<review-file>" --yes
 ```
+
+   Keep the same project root: signing re-verifies its ledger and checks
+   every reviewed event/stub against the original sequence and linkage,
+   with byte-exact matching for unredacted lines. Later valid appends are
+   allowed. A missing, corrupt, or replaced source ledger prevents signing;
+   report that error instead of bypassing it with a live-ledger `--yes` export.
 
    Add `--tsa https://freetsa.org/tsr` only if the user wants an RFC 3161
    trusted timestamp (tell them it sends a signature hash — never content —

@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { append, ledgerPath, readLedger } from "./lib/ledger.mjs";
+import { append, ledgerPath, readLedger, sha256hex, verifyChain } from "./lib/ledger.mjs";
 import { keyFile, prepareStatement } from "./lib/export.mjs";
 import { verifyPacket } from "./lib/verify.mjs";
 import { verifyPacket as verifyIndependent } from "../conformance/verify.mjs";
@@ -23,9 +23,9 @@ const out = path.join(sandbox, "review output");
 fs.mkdirSync(root);
 fs.writeFileSync(process.env.GIT_CONFIG_GLOBAL, "[user]\n email = default-owner@example.test\n");
 
-function run(args, ok = true) {
+function run(args, ok = true, env = {}) {
   const result = spawnSync(process.execPath, [cli, "export", "--root", root, "--out", out, ...args], {
-    env: process.env, encoding: "utf8", maxBuffer: 8 * 1024 * 1024,
+    env: { ...process.env, ...env }, encoding: "utf8", maxBuffer: 8 * 1024 * 1024,
   });
   assert.ifError(result.error);
   if (ok) assert.equal(result.status, 0, result.stderr);
@@ -56,6 +56,29 @@ function sign(saved, args = []) {
   return packet;
 }
 
+let rejected = 0;
+function rejectReview(saved, expected) {
+  // Provenance must be checked before loading/creating a key, contacting a
+  // TSA, or writing/overwriting a packet. Isolate the key for every refusal.
+  const config = path.join(sandbox, `rejected-signing-${rejected++}`);
+  const before = fs.readdirSync(out).map((name) => [name, fs.readFileSync(path.join(out, name))]);
+  const result = run(["--review", saved.file, "--yes", "--tsa", "http://127.0.0.1:1"], false, { XDG_CONFIG_HOME: config });
+  assert.match(result.stderr, expected);
+  assert.ok(!fs.existsSync(config), "rejected review never loads or creates a signing key");
+  assert.deepEqual(fs.readdirSync(out).map((name) => [name, fs.readFileSync(path.join(out, name))]), before, "rejection leaves existing reviews and packets untouched");
+}
+
+let mutation = 0;
+function modifiedReview(saved, change) {
+  const statement = structuredClone(saved.statement);
+  change(statement);
+  // Repair the event digest so tests reach provenance, not just a stale digest.
+  statement.subject[0].digest.sha256 = sha256hex(Buffer.from(JSON.stringify(statement.predicate.events)));
+  const file = path.join(sandbox, `modified-review-${mutation++}.json`);
+  fs.writeFileSync(file, JSON.stringify(statement));
+  return { file, statement };
+}
+
 try {
   const sessionId = "session-metadata-" + "x".repeat(140);
   const add = (kind, payload, caseId = "case:review") => append(root, { caseId, sessionId, kind, actor: "human", payload });
@@ -68,6 +91,20 @@ try {
   const original = readLedger(root).lines;
   assert.ok(original[prompt.seq].indexOf("PRIVATE_PROMPT_TAIL") > 100, "reproduces content beyond old review excerpt");
   assert.ok(original[tool.seq].indexOf("PRIVATE_TOOL_TAIL") > 100);
+
+  const printed = run(["--review", "-", "--case", "case:review", "--redact", String(tool.seq), "--owner", "print-owner@example.test", "--model", "print/model", "--tsa", "http://127.0.0.1:1"]);
+  const printedStatement = JSON.parse(printed.stdout);
+  assert.equal(printedStatement.predicate.owner, "print-owner@example.test");
+  assert.deepEqual(printedStatement.predicate.provider.languageModels[0], { inferenceProvider: "print/model" });
+  assert.equal(printedStatement.predicate.redactionCount, 1);
+  assert.ok(printed.stdout.includes("PRIVATE_PROMPT_TAIL"));
+  assert.ok(!printed.stdout.includes("PRIVATE_TOOL_TAIL"));
+  assert.ok(!printed.stdout.includes("OTHER_CASE_MUST_NOT_APPEAR"));
+  assert.ok(!printed.stdout.includes("sk-verysecret"));
+  assert.ok(run(["--review", "-"]).stdout.includes("OTHER_CASE_MUST_NOT_APPEAR"), "print-only supports full-ledger review");
+  assert.match(run(["--review", "-", "--yes"], false).stderr, /print-only/);
+  assert.ok(!fs.existsSync(out), "print-only creates no output directory or review files");
+  assert.ok(!fs.existsSync(keyFile()), "print-only creates no signing key");
 
   const initial = review(["--case", "case:review", "--model", "requested/provider", "--tsa", "http://127.0.0.1:1"]);
   const pred = initial.statement.predicate;
@@ -121,6 +158,64 @@ try {
   run(["--review"], false);
   assert.ok(!fs.existsSync(keyFile()), "conflicting options do not sign");
 
+  // Self-consistent statements from another ledger cannot be signed just
+  // because they pass internal chain verification. Even copying the project
+  // name cannot substitute for matching the actual ledger records.
+  const foreignRoot = path.join(sandbox, "foreign-ledger");
+  append(foreignRoot, { caseId: "case:review", kind: "prompt", actor: "human", payload: { prompt: "fabricated history" } });
+  const foreign = { statement: prepareStatement(foreignRoot) };
+  rejectReview(modifiedReview(foreign, (s) => { s.predicate.project = path.basename(root); }), /review does not match current ledger \(linkage at seq 0\)/);
+
+  // Check both non-redacted and redacted entry linkage, and the stubs.
+  for (const [saved, index] of [[initial, 0], [final, 0], [initial, 1]]) {
+    rejectReview(modifiedReview(saved, (s) => {
+      const entry = s.predicate.events[index];
+      if (entry.line) {
+        const value = JSON.parse(entry.line);
+        value.hash = "b".repeat(64);
+        entry.line = JSON.stringify(value);
+      } else entry.stub.hash = "b".repeat(64);
+    }), /review does not match current ledger \(linkage at seq/);
+  }
+  rejectReview(modifiedReview(final, (s) => {
+    const value = JSON.parse(s.predicate.events[0].line);
+    value.prevHash = "c".repeat(64);
+    s.predicate.events[0].line = JSON.stringify(value);
+  }), /linkage at seq 1/);
+  rejectReview(modifiedReview(initial, (s) => {
+    const value = JSON.parse(s.predicate.events[0].line);
+    value.payload.prompt = "edited but original hash retained";
+    s.predicate.events[0].line = JSON.stringify(value);
+  }), /content at seq 1/);
+  rejectReview(modifiedReview(initial, (s) => { s.predicate.events[1].stub.kind = "fabricated-kind"; }), /stub kind at seq 2/);
+  rejectReview(modifiedReview(initial, (s) => { s.predicate.events.splice(1, 1); }), /current ledger \(range\)/);
+  rejectReview(modifiedReview(initial, (s) => { s.predicate.events[1] = s.predicate.events[0]; }), /linkage at seq 2/);
+  rejectReview(modifiedReview(initial, (s) => { s.predicate.range.prevHashBefore = "genesis"; }), /range anchor/);
+  rejectReview(modifiedReview(initial, (s) => { s.predicate.ledgerHead.hash = "d".repeat(64); }), /snapshot head/);
+
+  const originalBody = original.join("\n") + "\n";
+  fs.unlinkSync(ledgerPath(root));
+  rejectReview(final, /linkage at seq 1/);
+  fs.writeFileSync(ledgerPath(root), original.slice(0, 3).join("\n") + "\n");
+  rejectReview(final, /linkage at seq 3/);
+  // A replacement ledger can be internally valid and still fail provenance.
+  for (const changedSeq of [prompt.seq, 2, tool.seq]) {
+    let prevHash = "genesis";
+    const replaced = original.map((line) => {
+      const value = JSON.parse(line);
+      if (value.seq === changedSeq) value.payload = { replacement: "different history" };
+      value.prevHash = prevHash;
+      value.hash = "";
+      value.hash = sha256hex(Buffer.from(JSON.stringify(value)));
+      prevHash = value.hash;
+      return JSON.stringify(value);
+    });
+    fs.writeFileSync(ledgerPath(root), replaced.join("\n") + "\n");
+    assert.ok(verifyChain(root).ok, "replacement ledger is self-consistent");
+    rejectReview(final, new RegExp(`linkage at seq ${changedSeq}`));
+  }
+  fs.writeFileSync(ledgerPath(root), originalBody);
+
   // Capture and defaults can change while the human reviews. Neither may
   // change signed bytes, including exportedAtMs, ledgerHead or process context.
   add("prompt", { prompt: "UNREVIEWED_NEW_EVENT" });
@@ -151,12 +246,18 @@ try {
   fs.writeFileSync(badFile, JSON.stringify(bad));
   assert.match(run(["--review", badFile, "--yes"], false).stderr, /invalid review statement \(redactionCount\)/);
 
-  // Preparing a new review still refuses a corrupt source ledger. Signing
-  // a saved review depends only on that already-reviewed snapshot.
+  // Both preparing and signing refuse a corrupt source ledger, including
+  // corruption in an appended event outside the reviewed range.
+  const currentBody = fs.readFileSync(ledgerPath(root), "utf8");
+  fs.writeFileSync(ledgerPath(root), currentBody.replace("UNREVIEWED_NEW_EVENT", "TAMPERED_LATER_EVENT"));
+  rejectReview(final, /ledger chain broken/);
+  fs.writeFileSync(ledgerPath(root), currentBody);
   fs.writeFileSync(ledgerPath(root), fs.readFileSync(ledgerPath(root), "utf8").replace("PRIVATE_PROMPT_TAIL", "TAMPERED"));
   assert.match(run([], false).stderr, /ledger chain broken/);
+  rejectReview(final, /ledger chain broken/);
+  fs.writeFileSync(ledgerPath(root), currentBody);
   sign(final);
-  console.log("testigo-cli: review regression assertions pass (complete content, metadata, redactions, frozen bytes, CLI workflow, verify ×2)");
+  console.log("testigo-cli: review regression assertions pass (complete content, print-only, metadata, redactions, frozen bytes, ledger provenance, CLI workflow, verify ×2)");
 } finally {
   fs.rmSync(sandbox, { recursive: true, force: true });
 }
