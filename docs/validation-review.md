@@ -1,7 +1,10 @@
 # Proof packet validation review
 
-This change closes signed-packet validation gaps without changing packet
-serialization, the format version, or either predicate URI. A valid signature
+This change closes signed-packet validation gaps through verifier-side
+tightenings, not additive format changes. Packet serialization, the format
+version, and both predicate URIs are unchanged. See SPEC §5's
+[Verification changes](../SPEC.md#verification-changes) note for acceptance
+changes and failure codes. A valid signature
 alone previously allowed unknown predicate types, wrong statement and payload
 types, false ranges, non-contiguous sequences, and missing Testigo metadata.
 
