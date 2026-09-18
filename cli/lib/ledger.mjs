@@ -154,8 +154,8 @@ export function append(root, spec) {
 
 /// Walk the chain (§1.5): seq strictly increments, prevHash links, every
 /// content hash recomputes from the raw bytes.
-export function verifyChain(root) {
-  const { lines, tornTail } = readLedger(root);
+export function verifyChain(root, snapshot = readLedger(root)) {
+  const { lines, tornTail } = snapshot;
   let prev = "genesis";
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];

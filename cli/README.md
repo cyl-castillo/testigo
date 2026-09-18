@@ -25,8 +25,10 @@ node /path/to/testigo/cli/bin/testigo.mjs init
 # work with Claude Code as usual…
 testigo log                      # see the evidence accumulate
 testigo link jira:PROJ-42        # bind the session to a requirement
-testigo export --case jira:PROJ-42          # pre-sign review (nothing signed)
-testigo export --case jira:PROJ-42 --yes    # sign & write the proof packet
+testigo export --case jira:PROJ-42          # save unsigned review; reports its path
+# Open the reported JSON file and inspect its complete contents, or print it:
+testigo export --review "/path/to/review-UUID.json"
+testigo export --review "/path/to/review-UUID.json" --yes  # sign those exact bytes
 ```
 
 `init` wires six hooks (SessionStart, UserPromptSubmit, PreToolUse,
@@ -45,9 +47,56 @@ in-toto statement anyone verifies with the
 each packet), `testigo verify-packet`, or any DSSE tooling.
 `--tsa https://freetsa.org/tsr` adds an RFC 3161 timestamp over the
 signature (§2.5 — the TSA sees a signature hash, never content).
-`--redact seq,seq` excludes event contents while keeping the chain
-verifiable; the pre-sign review shows everything a packet would contain
-*before* anything is signed. Every packet declares the
+`--redact seq,seq` replaces event **payloads**, keeping event metadata,
+hashes and linkage. Generate a new review with these options, inspect it,
+then sign the new file. Automatic and requested redactions are already
+applied in the review, including to derived process context.
+
+The pre-sign review is a complete unsigned in-toto statement saved as a
+fresh `review-UUID.json` in `--out` (default: `./proofpacks`). The terminal
+summary is **not** the review: open the JSON in an editor or print it using
+`export --review FILE`. It contains all final event lines, linkage stubs,
+and signed metadata without clipping. Event `line` strings preserve the
+exact serialized event text; an editor's word wrap helps with long lines.
+Review creates no signing key, signature, or TSA request.
+
+For a read-only look, `export --review -` prints a fresh complete
+post-redaction statement to stdout without creating a review file or output
+directory. It accepts `--case`, `--redact`, `--owner`, and `--model` like a
+normal export. It cannot be combined with `--yes`; to sign later, generate
+and inspect a saved review using the normal export command.
+
+`export --review FILE --yes` signs the file's exact bytes **after verifying
+the current project ledger and matching the reviewed records against it**.
+Use the same project directory or `--root DIR` used to prepare the review.
+Every event and stub must retain its original `seq`, `prevHash`, and `hash`;
+unredacted event lines must also match byte-for-byte. The range and saved
+ledger-head anchor must still match. Redacted payloads remain producer
+assertions: the check establishes their original ledger linkage, not their
+hidden contents. These provenance checks run before the signing key is loaded.
+
+Valid events appended while you review do not invalidate the snapshot.
+A missing ledger, a broken chain, or missing/replaced reviewed records
+prevent signing; a self-consistent review file alone is insufficient.
+The signed statement is never regenerated: changes to git identity and
+elapsed time do not alter it, and `exportedAtMs` still records when the
+snapshot was prepared.
+Changing `--case`, `--redact`, `--owner`, or `--model` requires generating
+and inspecting a new review. Signing adds the public key and signature;
+`--tsa` on the signing command adds a TSA response outside the statement.
+For unattended use, `export ... --yes` without `--review` still exports
+the current ledger directly and **skips review**.
+
+Plain `export` writes a new review file on every call. Review files contain
+the **post-redaction** statement and stay local until you remove them,
+including earlier versions made before additional redactions. Post-redaction
+does not mean safe to retain or share: patterns can miss sensitive text,
+and retained metadata can still be private. Treat these files like the
+packets themselves; do not commit or share them unintentionally.
+Manual redaction does not remove identifiers or paths outside a payload;
+inspect the remaining metadata before deciding to sign.
+
+Every packet declares the
 [process context](../SPEC.md#26-process-context-optional-additive--v02)
 (spec §2.6) **derived from the ledger**: harness and engine, the models seen
 in `session_start` / `model_switch`, the instruction-file digests the
@@ -94,11 +143,16 @@ Honesty first (it's the protocol's house style):
 
 ## Correctness
 
-`node test.mjs` runs the end-to-end suite: hook capture (including
+`npm test` runs the end-to-end and pre-sign review suites: hook capture (including
 interleaved sessions and a crash-torn tail healing), case linking, export
 with auto + manual redaction and out-of-case stubs, verification by both
 this CLI's verifier and the [conformance suite's](../conformance/)
 independent one — and requires the CLI verifier to reproduce the manifest
-verdict on **every conformance vector**. Concurrent hook appends are
+verdict on **every conformance vector**. CLI regression tests inspect long
+prompt/tool content, metadata, automatic plus requested redactions, and
+byte-for-byte equality between the saved review and the signed payload
+after valid ledger appends and identity changes. They also check print-only
+review and signing refusal for missing, corrupt, or replaced ledger records,
+unrelated review files, and altered event/stub linkage. Concurrent hook appends are
 serialized by an advisory lock (parallel tool calls are real; a fork in the
 chain would be corruption).

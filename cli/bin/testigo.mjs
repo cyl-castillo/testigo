@@ -9,7 +9,7 @@ import process from "node:process";
 
 import { append, caseFor, ledgerPath, readLedger, readState, verifyChain, writeState } from "../lib/ledger.mjs";
 import { handleHook, hooksConfig } from "../lib/hook.mjs";
-import { exportPacket, keyInfo, preview } from "../lib/export.mjs";
+import { exportPacket, keyInfo, prepareStatement, writeReview } from "../lib/export.mjs";
 import { attachEvidence, SOURCES } from "../lib/evidence.mjs";
 import { verifyPacket } from "../lib/verify.mjs";
 
@@ -41,9 +41,17 @@ usage: testigo <command> [options]
         Walk the project ledger's hash chain.
   export [--case ID] [--out DIR] [--redact s1,s2] [--tsa URL] [--yes] [--root DIR]
          [--owner LOGIN|EMAIL] [--model PROVIDER/NAME]
-        Review-then-sign a proof packet. Without --yes it prints the
-        pre-sign review (everything the packet would contain) and stops —
-        nothing leaves unreviewed. --tsa requests an RFC 3161 timestamp
+  export --review FILE [--yes] [--out DIR] [--tsa URL] [--root DIR]
+  export --review - [--case ID] [--redact s1,s2] [--owner LOGIN|EMAIL]
+         [--model PROVIDER/NAME] [--root DIR]
+        Without --yes, save a complete unsigned statement for review.
+        Open that file, or use --review FILE to print it in full. Then use
+        --review FILE --yes to sign those exact bytes after matching them
+        against the verified project ledger (use the same --root).
+        --review - prints a fresh statement without writing a file; it
+        cannot be combined with --yes. New redactions or
+        declarations require a new review. --yes alone skips review and
+        exports the current ledger. --tsa requests an RFC 3161 timestamp
         (e.g. https://freetsa.org/tsr; sends the TSA a signature hash only).
         The packet declares the process context (spec §2.6) derived from
         the ledger: harness, engine, models seen, instruction-file digests,
@@ -197,6 +205,12 @@ switch (cmd) {
   }
 
   case "export": {
+    const reviewFile = opt("--review", null);
+    if (flag("--review") && (!reviewFile || reviewFile.startsWith("--"))) die("--review requires a file path");
+    if (reviewFile === "-" && flag("--yes")) die("--review - is print-only; save and inspect a review file before signing");
+    if (reviewFile && reviewFile !== "-" && ["--case", "--redact", "--owner", "--model"].some(flag)) {
+      die("--review already fixes content and metadata; omit --review and generate a new review to change them");
+    }
     const caseId = opt("--case", null);
     const outDir = path.resolve(opt("--out", path.join(ROOT, "proofpacks")));
     const redactSeqs = (opt("--redact", "") || "")
@@ -207,22 +221,29 @@ switch (cmd) {
     const owner = opt("--owner", null);
     const model = opt("--model", null);
     if (!flag("--yes")) {
-      // Pre-sign review: everything the packet would contain, so the human
-      // can mark events for redaction BEFORE anything is signed.
-      const pv = preview(ROOT, caseId);
-      console.log(`pre-sign review — ${caseId ?? "full ledger"} (${pv.entries.length} entries):\n`);
-      for (const e of pv.entries) {
-        const mark = redactSeqs.includes(e.seq) ? "REDACT" : e.autoRedacted ? "auto-redacted" : e.stub ? "stub" : "";
-        const excerpt = e.stub ? "(other case — linkage only)" : e.line.slice(0, 100);
-        console.log(`${String(e.seq).padStart(4)}  ${e.kind.padEnd(12)} ${mark.padEnd(14)} ${excerpt}`);
+      if (reviewFile === "-") {
+        process.stdout.write(JSON.stringify(prepareStatement(ROOT, { caseId, redactSeqs, owner, model }), null, 2) + "\n");
+        break;
       }
+      if (reviewFile) {
+        process.stdout.write(fs.readFileSync(reviewFile));
+        break;
+      }
+      const review = writeReview(ROOT, { caseId, outDir, redactSeqs, owner, model });
+      const pred = review.statement.predicate;
+      console.log(`pre-sign review saved: ${review.path}`);
+      console.log(`entries: ${pred.events.length} · stubs: ${pred.events.filter((e) => e.stub).length} · redactions: ${pred.redactionCount}`);
       console.log(
-        `\nnothing signed. Re-run with --yes to sign & write` +
-          ` (add --redact seq,seq to exclude event contents; hashes and linkage stay verifiable).`,
+        `\nNothing signed. Open the saved JSON to inspect ALL final event lines, stubs, and metadata.` +
+        `\nThis summary is not the review. To print the complete file: export --review "${review.path}"` +
+        `\nTo change payload redactions, rerun the original export with --redact seq,seq and inspect the NEW review.` +
+        `\nManual redaction keeps event metadata (including paths or identifiers outside payload).` +
+        `\nAfter review, sign the saved bytes: export --review "${review.path}" --yes --root "${ROOT}" --out "${outDir}"${tsa ? ` --tsa "${tsa}"` : ""}` +
+        `\nSigning adds the public key and signature; optional --tsa adds a timestamp outside the signed statement.`,
       );
       break;
     }
-    const sum = await exportPacket(ROOT, { caseId, outDir, redactSeqs, tsa, owner, model });
+    const sum = await exportPacket(ROOT, { caseId, outDir, redactSeqs, tsa, owner, model, reviewFile });
     console.log(`packet:   ${sum.path}`);
     console.log(`verifier: ${sum.verifier}`);
     console.log(
