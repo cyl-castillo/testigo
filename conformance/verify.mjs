@@ -14,7 +14,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const sha256hex = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
@@ -209,7 +209,7 @@ function runManifest(dir, label) {
 }
 
 function runSuite() {
-  const here = path.dirname(new URL(import.meta.url).pathname);
+  const here = path.dirname(fileURLToPath(import.meta.url));
   const arg = process.argv[2];
 
   if (arg) {

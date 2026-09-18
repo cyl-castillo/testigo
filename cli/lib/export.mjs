@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { readLedger, sha256hex, verifyChain } from "./ledger.mjs";
 import * as rfc3161 from "./rfc3161.mjs";
@@ -253,8 +254,8 @@ export async function exportPacket(root, { caseId = null, outDir, redactSeqs = [
   // Ship the standalone verifier alongside when we can find it (repo
   // checkout / packaged copy); otherwise point at the hosted one.
   let verifier = HOSTED_VERIFIER;
-  const local = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "verifier", "testigo-verifier.html");
-  const repo = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "verifier", "testigo-verifier.html");
+  const local = fileURLToPath(new URL("../verifier/testigo-verifier.html", import.meta.url));
+  const repo = fileURLToPath(new URL("../../verifier/testigo-verifier.html", import.meta.url));
   for (const src of [local, repo]) {
     if (fs.existsSync(src)) {
       verifier = path.join(outDir, "testigo-verifier.html");
