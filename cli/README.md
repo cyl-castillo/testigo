@@ -49,6 +49,22 @@ remains a verbatim override: quote it for the selected hook shell, which may
 differ from the terminal running `init`. `--user` uses the platform home
 directory (`USERPROFILE` on Windows), independent of the project directory.
 
+Unlike the earlier `node` command resolved through `PATH`, generated commands
+pin `process.execPath`. If nvm/asdf switches Node versions, the hook keeps using
+the version that ran `init`; removing that version breaks the command. Rerun
+`init` with the replacement Node version before removing the old one. To keep
+using `node` from `PATH`, supply a suitably quoted `--command` override.
+
+Rerunning `init` replaces recognized legacy commands for this CLI and removes
+duplicate registrations in its default, unconditional matcher groups. It
+reports installed/replaced/removed counts, or `already installed` when no
+change is needed. Unrelated commands and restricted matcher groups are
+preserved; wrappers and commands containing shell expansions are not guessed
+at. Changed settings are backed up to `.bak`; a no-op leaves that backup intact.
+
+The `shell` property is a documented [Claude Code command-hook field](https://code.claude.com/docs/en/hooks#command-hook-fields):
+`bash` selects sh/Git Bash, and `powershell` selects PowerShell on Windows.
+
 Exports are [proof packets](../SPEC.md#2-the-proof-packet): a DSSE-signed
 in-toto statement anyone verifies with the
 [standalone verifier](../verifier/testigo-verifier.html) (written alongside

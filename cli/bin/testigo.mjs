@@ -15,6 +15,7 @@ import { exportPacket, keyInfo, preview } from "../lib/export.mjs";
 import { attachEvidence, SOURCES } from "../lib/evidence.mjs";
 import { verifyPacket } from "../lib/verify.mjs";
 import { hookCommand } from "../lib/command.mjs";
+import { installHooks } from "../lib/init.mjs";
 
 const HELP = `testigo — witness CLI for the Testigo protocol (spec: github.com/cyl-castillo/testigo)
 
@@ -112,19 +113,20 @@ switch (cmd) {
     let existing = {};
     if (fs.existsSync(target)) {
       existing = JSON.parse(fs.readFileSync(target, "utf8"));
-      fs.copyFileSync(target, `${target}.bak`);
     }
     existing.hooks ??= {};
-    for (const [event, matchers] of Object.entries(config.hooks)) {
-      existing.hooks[event] ??= [];
-      const already = existing.hooks[event].some((matcher) =>
-        matcher.hooks?.some((hook) => hook.type === "command" && hook.command === command &&
-          (hook.shell ?? "bash") === shell));
-      if (!already) existing.hooks[event].push(...matchers);
+    const { installed, replaced, removed } = installHooks(existing.hooks, config.hooks, self, ROOT);
+    if (installed || replaced || removed) {
+      const backup = fs.existsSync(target);
+      if (backup) fs.copyFileSync(target, `${target}.bak`);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, JSON.stringify(existing, null, 2) + "\n");
+      const actions = [installed && `installed ${installed} entries`, replaced && `replaced ${replaced} legacy entries`,
+        removed && `removed ${removed} duplicate entries`].filter(Boolean).join("; ");
+      console.log(`hooks: ${actions} in ${target}${backup ? " (previous saved as .bak)" : ""}`);
+    } else {
+      console.log(`hooks already installed in ${target}`);
     }
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, JSON.stringify(existing, null, 2) + "\n");
-    console.log(`hooks installed in ${target}${fs.existsSync(`${target}.bak`) ? ` (previous saved as .bak)` : ""}`);
     console.log(`ledger will be written to ${ledgerPath(ROOT)}`);
     console.log(`note: running Claude Code sessions pick hooks up on restart.`);
     break;
