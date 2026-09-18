@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { append, ledgerPath, readLedger, verifyChain } from "./lib/ledger.mjs";
 
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "testigo-ledger-test-"));
@@ -90,6 +92,37 @@ test("terminated corrupt records (including the old concatenation) fail without 
   const before = bytes(root);
   assert.throws(() => add(root, "must not discard evidence"), /tampering or corruption/);
   assert.deepEqual(bytes(root), before);
+});
+
+test("CLI verify reports the physical line index and validates a manual separator repair", () => {
+  const root = path.join(sandbox, "verify-old-concatenation");
+  const events = [add(root, "prefix"), add(root, "literal }{ in a payload"), add(root, "last")];
+  const lines = readLedger(root).lines;
+  // A blank line makes the physical index differ from the event sequence.
+  const prefix = lines[0] + "\n\n";
+  fs.writeFileSync(ledgerPath(root), prefix + lines[1] + lines[2] + "\n");
+  const before = bytes(root);
+  const verify = () => spawnSync(process.execPath, [
+    fileURLToPath(new URL("./bin/testigo.mjs", import.meta.url)), "verify", "--root", root,
+  ], { encoding: "utf8", timeout: 10_000 });
+
+  const corrupt = verify();
+  assert.ifError(corrupt.error);
+  assert.equal(corrupt.status, 1);
+  assert.match(corrupt.stderr, /unparseable ledger line at index 2 — tampering or corruption/);
+  assert.doesNotMatch(corrupt.stdout, /chain ok/);
+  assert.deepEqual(bytes(root), before, "verification leaves the evidence intact");
+
+  // Insert only the missing separator, leaving the payload's }{ untouched.
+  const boundary = Buffer.byteLength(prefix + lines[1], "utf8");
+  const repaired = Buffer.concat([before.subarray(0, boundary), Buffer.from("\n"), before.subarray(boundary)]);
+  fs.writeFileSync(ledgerPath(root), repaired);
+  const restored = verify();
+  assert.ifError(restored.error);
+  assert.equal(restored.status, 0, restored.stderr);
+  assert.match(restored.stdout, /chain ok: 3 events/);
+  assert.deepEqual(bytes(root), repaired);
+  check(root, events);
 });
 
 test("whitespace-only unterminated tails are separated without changing prior bytes", () => {
