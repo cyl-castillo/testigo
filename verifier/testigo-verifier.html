@@ -76,6 +76,13 @@ function check(cls, text) {
   $("checks").appendChild(d);
 }
 
+function cell(row, value, cls = "") {
+  const td = document.createElement("td");
+  td.className = cls;
+  td.textContent = String(value);
+  row.appendChild(td);
+}
+
 function renderTimestamp(tsp, digest, tokenBytes, genTime) {
   const d = $("tsp");
   d.innerHTML = "<h3>Timestamp</h3>";
@@ -256,8 +263,12 @@ async function load(f) {
   tbl.innerHTML = "<tr><th>seq</th><th>kind</th><th>actor</th><th>detail</th></tr>";
   for (const e of events) {
     const tr = document.createElement("tr");
+    // Packet values are untrusted even when the signature verifies.
     if (e.stub) {
-      tr.innerHTML = `<td>${e.stub.seq}</td><td class="kind muted">stub</td><td class="muted">—</td><td class="muted">${e.stub.kind ?? ""} (other case, linkage only)</td>`;
+      cell(tr, e.stub.seq);
+      cell(tr, "stub", "kind muted");
+      cell(tr, "—", "muted");
+      cell(tr, `${e.stub.kind ?? ""} (other case, linkage only)`, "muted");
     } else {
       let v = {}; try { v = JSON.parse(e.line); } catch {}
       const p = v.payload || {};
@@ -274,8 +285,10 @@ async function load(f) {
       else if (v.kind === "model_switch") detail = `${p.from ?? "?"} → ${p.to ?? "?"}`;
       else if (v.kind === "tool_call") detail = `tool=${p.tool ?? ""}`;
       else if (v.kind === "external_evidence") detail = `${p.source ?? "evidence"} · sha256 ${(p.sha256 || "").slice(0, 12)}… · ${p.uri ?? ""}${p.note ? " · " + p.note : ""}`;
-      const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-      tr.innerHTML = `<td>${v.seq}</td><td class="kind">${esc(v.kind)}${e.redacted ? " ⚠" : ""}</td><td>${esc(v.actor ?? "")}</td><td>${esc(detail)}</td>`;
+      cell(tr, v.seq);
+      cell(tr, `${v.kind}${e.redacted ? " ⚠" : ""}`, "kind");
+      cell(tr, v.actor ?? "");
+      cell(tr, detail);
     }
     tbl.appendChild(tr);
   }
