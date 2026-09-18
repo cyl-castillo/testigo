@@ -230,6 +230,334 @@
         "timestamp": "mismatch"
       },
       "credit": "Rul1an (corpus cross, cyl-castillo/testigo#1)"
+    },
+    {
+      "file": "invalid-unknown-predicate-type.proofpack.json",
+      "description": "Signed-over isolated predicateType defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicateType"
+      }
+    },
+    {
+      "file": "invalid-statement-type.proofpack.json",
+      "description": "Signed-over isolated statementType defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "statementType"
+      }
+    },
+    {
+      "file": "invalid-payload-type.proofpack.json",
+      "description": "Signed-over isolated payloadType defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "payloadType"
+      }
+    },
+    {
+      "file": "invalid-range-start.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-range-end.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-range-reversed.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-range-genesis.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-range-missing.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-range-type.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-range-unsafe-integer.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-partial-range-genesis.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-empty-events.proofpack.json",
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "range"
+      }
+    },
+    {
+      "file": "invalid-sequence-full.proofpack.json",
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "sequence"
+      }
+    },
+    {
+      "file": "invalid-sequence-redacted.proofpack.json",
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "sequence"
+      }
+    },
+    {
+      "file": "invalid-sequence-stub.proofpack.json",
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "sequence"
+      }
+    },
+    {
+      "file": "invalid-sequence-type.proofpack.json",
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "sequence"
+      }
+    },
+    {
+      "file": "invalid-sequence-negative.proofpack.json",
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "sequence"
+      }
+    },
+    {
+      "file": "invalid-sequence-fraction.proofpack.json",
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "sequence"
+      }
+    },
+    {
+      "file": "invalid-entry-redacted-type.proofpack.json",
+      "description": "Signed-over isolated entry defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "entry"
+      }
+    },
+    {
+      "file": "invalid-entry-redacted-missing.proofpack.json",
+      "description": "Signed-over isolated entry defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "entry"
+      }
+    },
+    {
+      "file": "invalid-entry-ambiguous.proofpack.json",
+      "description": "Signed-over isolated entry defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "entry"
+      }
+    },
+    {
+      "file": "invalid-entry-null.proofpack.json",
+      "description": "Signed-over isolated entry defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "entry"
+      }
+    },
+    {
+      "file": "invalid-events-type.proofpack.json",
+      "description": "Signed-over isolated events defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "events"
+      }
+    },
+    {
+      "file": "invalid-subject-empty.proofpack.json",
+      "description": "Signed-over isolated subject defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "subject"
+      }
+    },
+    {
+      "file": "invalid-predicate-null.proofpack.json",
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicate"
+      }
+    },
+    {
+      "file": "invalid-project-type.proofpack.json",
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicate"
+      }
+    },
+    {
+      "file": "invalid-generator-type.proofpack.json",
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicate"
+      }
+    },
+    {
+      "file": "invalid-redaction-count-type.proofpack.json",
+      "description": "Signed-over isolated redactionCount defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "redactionCount"
+      }
+    },
+    {
+      "file": "invalid-context-artifact-both.proofpack.json",
+      "description": "Signed-over isolated processContext defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "processContext"
+      }
+    },
+    {
+      "file": "valid-additive-fields.proofpack.json",
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid.",
+      "expect": {
+        "valid": true,
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "valid-partial-range.proofpack.json",
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid.",
+      "expect": {
+        "valid": true,
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "valid-single-event.proofpack.json",
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid.",
+      "expect": {
+        "valid": true,
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "valid-all-stubs.proofpack.json",
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid.",
+      "expect": {
+        "valid": true,
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "valid-legacy-stub.proofpack.json",
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid.",
+      "expect": {
+        "valid": true,
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "invalid-missing-project.proofpack.json",
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicate"
+      }
+    },
+    {
+      "file": "invalid-missing-generator.proofpack.json",
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicate"
+      }
+    },
+    {
+      "file": "invalid-missing-exportedAtMs.proofpack.json",
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicate"
+      }
+    },
+    {
+      "file": "invalid-exported-at-ms-type.proofpack.json",
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicate"
+      }
+    },
+    {
+      "file": "invalid-session-chain-profile.proofpack.json",
+      "description": "Signed-over isolated predicateType defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "predicateType"
+      }
+    },
+    {
+      "file": "valid-legacy-no-redaction-count.proofpack.json",
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid.",
+      "expect": {
+        "valid": true,
+        "timestamp": "none"
+      }
+    },
+    {
+      "file": "invalid-missing-nonzero-redaction-count.proofpack.json",
+      "description": "Signed-over isolated redactionCount defect; the signature remains valid (no transport tamper).",
+      "expect": {
+        "valid": false,
+        "firstFailure": "redactionCount"
+      }
     }
   ]
 }

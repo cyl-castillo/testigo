@@ -14,29 +14,87 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const TESTIGO_TYPE = "https://github.com/cyl-castillo/testigo/attestation/v0.1";
+const SESSION_CHAIN_TYPE = "https://in-toto.io/attestation/session-chain/v0.1";
+const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const isHash = (v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
+const isSeq = (v) => Number.isSafeInteger(v) && v >= 0;
+
+// Validate the signed structure before using it. Unknown predicate/ledger
+// members and event kinds remain additive; entry wrappers retain schema oneOf.
+function checkStructure(st, sessionChain = false) {
+  if (!isObject(st)) return "payload";
+  if (st._type !== "https://in-toto.io/Statement/v1") return "statementType";
+  if (st.predicateType !== (sessionChain ? SESSION_CHAIN_TYPE : TESTIGO_TYPE)) return "predicateType";
+  const p = st.predicate;
+  if (!isObject(p)) return "predicate";
+  if (sessionChain) {
+    // Date.parse alone normalizes impossible dates (e.g. February 30).
+    const t = p.exportedAt;
+    if (typeof t !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(t) ||
+        !Number.isFinite(Date.parse(t)) || new Date(t).toISOString().slice(0, 19) !== t.slice(0, 19)) return "exportedAt";
+  } else if (typeof p.project !== "string" || typeof p.generator !== "string" || !Number.isInteger(p.exportedAtMs)) return "predicate";
+  if ((p.project !== undefined && typeof p.project !== "string") ||
+      (p.generator !== undefined && typeof p.generator !== "string") ||
+      (p.caseId !== undefined && p.caseId !== null && typeof p.caseId !== "string")) return "predicate";
+  if (p.ledgerHead !== undefined && (!isObject(p.ledgerHead) ||
+      (p.ledgerHead.seq != null && !Number.isInteger(p.ledgerHead.seq)) ||
+      (p.ledgerHead.hash != null && typeof p.ledgerHead.hash !== "string"))) return "predicate";
+  if ((sessionChain || p.redactionCount !== undefined) &&
+      (!Number.isInteger(p.redactionCount) || p.redactionCount < 0)) return "redactionCount";
+  if (!Array.isArray(st.subject) || !st.subject.length || st.subject.some((s) =>
+      !isObject(s) || typeof s.name !== "string" || !isObject(s.digest) ||
+      !Object.keys(s.digest).length || Object.values(s.digest).some((d) => typeof d !== "string"))) return "subject";
+  if (!Array.isArray(p.events)) return "events";
+  const r = p.range;
+  if (!isObject(r) || !isSeq(r.fromSeq) || !isSeq(r.toSeq) || r.toSeq < r.fromSeq ||
+      p.events.length !== r.toSeq - r.fromSeq + 1 ||
+      (r.fromSeq === 0 ? r.prevHashBefore !== "genesis" : !isHash(r.prevHashBefore))) return "range";
+  for (let i = 0; i < p.events.length; i++) {
+    const e = p.events[i];
+    if (!isObject(e)) return "entry";
+    let v;
+    if (Object.hasOwn(e, "line")) {
+      if (typeof e.line !== "string" || typeof e.redacted !== "boolean" ||
+          Object.keys(e).some((k) => !["line", "redacted"].includes(k))) return "entry";
+      try { v = JSON.parse(e.line); } catch { return "entry"; }
+      if (!isObject(v) || !Number.isInteger(v.ts) || typeof v.caseId !== "string" ||
+          typeof v.kind !== "string" || !["human", "agent", "system"].includes(v.actor) || !isObject(v.payload) ||
+          ["turnId", "termId", "sessionId"].some((k) => v[k] !== undefined && typeof v[k] !== "string")) return "entry";
+    } else {
+      if (!isObject(e.stub) || Object.keys(e).some((k) => k !== "stub")) return "entry";
+      v = e.stub;
+      // kind is optional on legacy stubs, as in the published schema.
+      if (v.kind !== undefined && typeof v.kind !== "string") return "entry";
+    }
+    if (!isSeq(v.seq) || v.seq !== r.fromSeq + i) return "sequence";
+    if (!isHash(v.hash) || !(v.prevHash === "genesis" || isHash(v.prevHash))) return "entry";
+  }
+  return null;
+}
 
 const sha256hex = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
 /// Verify one packet per §2.4. Returns:
 ///   { valid, firstFailure, counts: {entries, recomputed, redacted, stubs},
 ///     timestamp: "none" | "declared" | "mismatch", keyId }
-/// firstFailure ∈ format | keyid | signature | payload | predicateType |
-///   exportedAt | digest | linkage | contentHash | redactionCount |
-///   processContext | timestamps
-///
-/// `enforce` turns this into a checker of a SPECIFIC predicate (a manifest's
-/// `enforce` block): { predicateType } requires an exact type URI (spec §5 —
-/// verifiers reject predicate types they don't implement); { exportedAt:
-/// "rfc3339" } requires the session-chain time convention. The migration-
-/// guard vectors exist to catch checkers that skip these.
+/// Structural failure codes: payloadType, statementType, predicateType,
+/// predicate, subject, events, entry, range, sequence; draft-only: exportedAt.
+/// `enforce.predicateType` explicitly selects one of the two implemented
+/// profiles. Default: Testigo. Selecting session-chain ALWAYS enables all its
+/// rules, regardless of the legacy manifest's informative exportedAt flag.
 export function verifyPacket(pkt, enforce = {}) {
   const fail = (code) => ({ valid: false, firstFailure: code });
 
   // 1. Format.
-  if (pkt.format !== "testigo-proofpack/v0.1") return fail("format");
+  if (!isObject(pkt) || pkt.format !== "testigo-proofpack/v0.1") return fail("format");
 
   // 2. keyid = sha256 of the embedded raw public key.
+  if (!isObject(pkt.envelope) || typeof pkt.publicKey !== "string" ||
+      typeof pkt.envelope.payload !== "string" || !Array.isArray(pkt.envelope.signatures)) return fail("payload");
+  if (pkt.envelope.payloadType !== "application/vnd.in-toto+json") return fail("payloadType");
   const pubRaw = Buffer.from(pkt.publicKey ?? "", "base64");
   const keyId = sha256hex(pubRaw);
   const sigEntry = pkt.envelope?.signatures?.[0] ?? {};
@@ -69,16 +127,19 @@ export function verifyPacket(pkt, enforce = {}) {
   } catch {
     return fail("payload");
   }
-  if (enforce.predicateType && st.predicateType !== enforce.predicateType)
-    return fail("predicateType");
-  if (
-    enforce.exportedAt === "rfc3339" &&
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(st.predicate?.exportedAt ?? "")
-  )
-    return fail("exportedAt");
-  const events = st.predicate?.events ?? [];
-  const want = st.subject?.[0]?.digest?.sha256 ?? "";
-  if (sha256hex(Buffer.from(JSON.stringify(events), "utf8")) !== want) return fail("digest");
+  // Explicit selection only; the packet never selects its own profile.
+  if (!isObject(enforce) || (enforce.predicateType !== undefined && ![TESTIGO_TYPE, SESSION_CHAIN_TYPE].includes(enforce.predicateType))) return fail("profile");
+  const sessionChain = enforce.predicateType === SESSION_CHAIN_TYPE;
+  const structureFailure = checkStructure(st, sessionChain);
+  if (structureFailure) return fail(structureFailure);
+  const events = st.predicate.events;
+  const digest = sha256hex(Buffer.from(JSON.stringify(events), "utf8"));
+  if (sessionChain && st.predicate.evidence !== undefined) {
+    const evidence = st.predicate.evidence;
+    if (!isObject(evidence) || typeof evidence.name !== "string" || evidence.digest?.sha256 !== digest) return fail("digest");
+    // Repeated segment descriptors in subject must agree too.
+    if (st.subject.some((s) => s.name === evidence.name && s.digest.sha256 !== digest)) return fail("digest");
+  } else if ((sessionChain ? st.subject : [st.subject[0]]).some((s) => s.digest.sha256 !== digest)) return fail("digest");
 
   // 5 + 6. Linkage across every entry; content recompute for clean lines.
   let prev = st.predicate?.range?.prevHashBefore ?? "genesis";
@@ -102,6 +163,7 @@ export function verifyPacket(pkt, enforce = {}) {
     }
     if (prevHash !== prev) return fail("linkage");
     if (typeof e.line === "string" && !e.redacted) {
+      if (!/"hash":"[0-9a-f]{64}"}$/.test(e.line)) return fail("contentHash");
       const idx = e.line.lastIndexOf('"hash":"');
       const recomputed = sha256hex(Buffer.from(e.line.slice(0, idx) + '"hash":""}', "utf8"));
       if (recomputed !== hash) return fail("contentHash");
@@ -162,7 +224,7 @@ export function checkProcessContext(pred, events) {
     if (!Array.isArray(pred.contextArtifacts)) return "processContext";
     for (const a of pred.contextArtifacts) {
       if (!isObj(a)) return "processContext";
-      if (nonEmpty(a.uri) === nonEmpty(a.data)) return "processContext"; // exactly one of uri / data
+      if (Object.hasOwn(a, "uri") === Object.hasOwn(a, "data") || !nonEmpty(a.uri ?? a.data)) return "processContext";
       if (a.digest !== undefined && !(isObj(a.digest) && /^[0-9a-f]{64}$/.test(a.digest.sha256 ?? "")))
         return "processContext";
       if (a.tags !== undefined && !(Array.isArray(a.tags) && a.tags.every(nonEmpty))) return "processContext";
@@ -209,11 +271,22 @@ function runManifest(dir, label) {
 }
 
 function runSuite() {
-  const here = path.dirname(new URL(import.meta.url).pathname);
-  const arg = process.argv[2];
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const args = process.argv.slice(2);
+  let enforce = {};
+  if (args[0] === "--profile") {
+    const profile = args[1];
+    if (!["testigo", "session-chain"].includes(profile) || args.length !== 3) {
+      console.error("usage: verify.mjs [--profile testigo|session-chain] packet.json");
+      process.exit(2);
+    }
+    enforce = { predicateType: profile === "session-chain" ? SESSION_CHAIN_TYPE : TESTIGO_TYPE };
+    args.splice(0, 2);
+  }
+  const arg = args[0];
 
   if (arg) {
-    const result = verifyPacket(JSON.parse(fs.readFileSync(arg, "utf8")));
+    const result = verifyPacket(JSON.parse(fs.readFileSync(arg, "utf8")), enforce);
     console.log(JSON.stringify(result, null, 2));
     process.exit(result.valid ? 0 : 1);
   }

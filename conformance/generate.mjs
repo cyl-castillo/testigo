@@ -22,8 +22,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, "vectors");
 const TOKEN_FIXTURE = path.join(HERE, "fixtures", "timestamp-token.b64");
 
@@ -87,7 +88,7 @@ function ledger(specs) {
 
 function pae(type, payload) {
   return Buffer.concat([
-    Buffer.from(`DSSEv1 ${type.length} ${type} ${payload.length} `, "utf8"),
+    Buffer.from(`DSSEv1 ${Buffer.byteLength(type, "utf8")} ${type} ${payload.length} `, "utf8"),
     payload,
   ]);
 }
@@ -101,6 +102,7 @@ function packet({
   range,
   head,
   predicateType = PREDICATE_TYPE,
+  payloadType = PAYLOAD_TYPE,
   // Session-chain draft convention (predicate/session-chain.md): RFC 3339
   // exportedAt instead of testigo v0.1's epoch-ms exportedAtMs.
   exportedAtRfc3339 = false,
@@ -111,7 +113,7 @@ function packet({
   mutateStatement, // producer bug: defect signed over
   mutatePacket, // transport tamper: defect after signing
 }) {
-  const redactionCount = entries.filter((e) => e.redacted).length;
+  const redactionCount = entries.filter((e) => e?.redacted === true).length;
   const eventsBody = JSON.stringify(entries);
   const statement = {
     _type: STATEMENT_TYPE,
@@ -126,7 +128,7 @@ function packet({
         ? { exportedAt: "2026-07-17T12:00:00Z" }
         : { exportedAtMs: 1789000100000 }),
       generator: "testigo-conformance/1.0",
-      range,
+      range: { ...range },
       ledgerHead: head,
       redactionCount,
       ...(extra ?? {}),
@@ -135,11 +137,11 @@ function packet({
   };
   if (mutateStatement) mutateStatement(statement);
   const payload = Buffer.from(JSON.stringify(statement), "utf8");
-  const sig = crypto.sign(null, pae(PAYLOAD_TYPE, payload), PRIV);
+  const sig = crypto.sign(null, pae(payloadType, payload), PRIV);
   const pkt = {
     format: FORMAT,
     envelope: {
-      payloadType: PAYLOAD_TYPE,
+      payloadType,
       payload: payload.toString("base64"),
       signatures: [{ keyid: KEY_ID, sig: sig.toString("base64") }],
     },
@@ -555,8 +557,8 @@ if (fs.existsSync(TOKEN_FIXTURE)) {
 // The same rules under the in-toto predicate proposal's conventions
 // (predicateType URI + RFC 3339 exportedAt), so a checker of THAT predicate
 // has bytes to run against — see predicate/session-chain.md. The subject
-// shape mirrors testigo v0.1 for now; its redesign (produced artifacts +
-// segment digest) is under discussion in in-toto/attestation#554.
+// artifact-less examples use the segment subject; artifact/evidence examples
+// below exercise the draft's existing subject rule as well.
 
 const SC_OUT = path.join(HERE, "..", "predicate", "vectors");
 const SC_TYPE = "https://in-toto.io/attestation/session-chain/v0.1";
@@ -627,6 +629,91 @@ scAdd(
 );
 
 // ---- write everything ------------------------------------------------------
+
+// Profile validation regressions. All mutations here are signed over; changed
+// entries are digested after mutation, and full lines are rehashed/relinked.
+// Run common rules in BOTH profiles, selecting the draft explicitly.
+function rechain(mutator, initialPrev = "genesis") {
+  let prevHash = initialPrev;
+  return BASE.map((event, i) => {
+    const v = JSON.parse(event.line);
+    delete v.hash;
+    mutator(v, i);
+    const next = makeLine({ ...v, prevHash });
+    prevHash = next.hash;
+    return full(next);
+  });
+}
+for (const [prefix, addVector, profile] of [["", add, {}], ["sc-", scAdd, sc]]) {
+  const build = (opts = {}) => packet({ ...profile, entries: BASE.map(full), range: FULL_RANGE, head: HEAD, ...opts });
+  const negative = (name, code, opts) => addVector(prefix + name,
+    `Signed-over isolated ${code} defect; the signature remains valid (no transport tamper).`,
+    build(opts), { valid: false, firstFailure: code });
+  negative("invalid-unknown-predicate-type", "predicateType", { predicateType: "https://example.invalid/unknown/v1" });
+  negative("invalid-statement-type", "statementType", { mutateStatement: s => { s._type = "https://in-toto.io/Statement/v0.1"; } });
+  negative("invalid-payload-type", "payloadType", { payloadType: "application/json" });
+  negative("invalid-range-start", "range", { range: { ...FULL_RANGE, fromSeq: 1 } });
+  negative("invalid-range-end", "range", { range: { ...FULL_RANGE, toSeq: 9 } });
+  negative("invalid-range-reversed", "range", { range: { ...FULL_RANGE, fromSeq: 5 } });
+  negative("invalid-range-genesis", "range", { range: { ...FULL_RANGE, prevHashBefore: "a".repeat(64) }, entries: rechain(() => {}, "a".repeat(64)) });
+  negative("invalid-range-missing", "range", { mutateStatement: s => { delete s.predicate.range; } });
+  negative("invalid-range-type", "range", { range: { ...FULL_RANGE, fromSeq: "0" } });
+  negative("invalid-range-unsafe-integer", "range", { range: { fromSeq: 2 ** 53, toSeq: 2 ** 53, prevHashBefore: BASE[0].hash }, entries: [{ stub: { seq: 2 ** 53, prevHash: BASE[0].hash, hash: BASE[1].hash } }] });
+  negative("invalid-partial-range-genesis", "range", { entries: [{ stub: { seq: 2, prevHash: "genesis", hash: BASE[2].hash } }], range: { fromSeq: 2, toSeq: 2, prevHashBefore: "genesis" } });
+  negative("invalid-empty-events", "range", { entries: [] });
+  negative("invalid-sequence-full", "sequence", { entries: rechain((v, i) => { if (i === 2) v.seq = 3; }) });
+  negative("invalid-sequence-redacted", "sequence", { entries: caseEntries().map((e, i) => i === 1 ? { ...e, line: e.line.replace('"seq":1', '"seq":9') } : e) });
+  negative("invalid-sequence-stub", "sequence", { entries: caseEntries().map((e, i) => i === 2 ? { stub: { ...e.stub, seq: 3 } } : e) });
+  negative("invalid-sequence-type", "sequence", { entries: rechain((v, i) => { if (i === 2) v.seq = "2"; }) });
+  negative("invalid-sequence-negative", "sequence", { entries: rechain((v, i) => { if (i === 2) v.seq = -1; }) });
+  negative("invalid-sequence-fraction", "sequence", { entries: rechain((v, i) => { if (i === 2) v.seq = 2.5; }) });
+  negative("invalid-entry-redacted-type", "entry", { entries: BASE.map(full).map((e, i) => i === 1 ? { ...e, redacted: "false" } : e) });
+  negative("invalid-entry-redacted-missing", "entry", { entries: BASE.map(full).map((e, i) => i === 1 ? { line: e.line } : e) });
+  negative("invalid-entry-ambiguous", "entry", { entries: BASE.map(full).map((e, i) => i === 1 ? { ...e, stub: stub(BASE[1]).stub } : e) });
+  negative("invalid-entry-null", "entry", { entries: [null, ...BASE.slice(1).map(full)] });
+  negative("invalid-events-type", "events", { mutateStatement: s => { s.predicate.events = {}; s.subject[0].digest.sha256 = sha256hex(Buffer.from("{}")); } });
+  negative("invalid-subject-empty", "subject", { mutateStatement: s => { s.subject = []; } });
+  negative("invalid-predicate-null", "predicate", { mutateStatement: s => { s.predicate = null; } });
+  negative("invalid-project-type", "predicate", { mutateStatement: s => { s.predicate.project = 42; } });
+  negative("invalid-generator-type", "predicate", { mutateStatement: s => { s.predicate.generator = null; } });
+  negative("invalid-redaction-count-type", "redactionCount", { mutateStatement: s => { s.predicate.redactionCount = "0"; } });
+  negative("invalid-context-artifact-both", "processContext", { extra: { contextArtifacts: [{ uri: "CLAUDE.md", data: "" }] } });
+  const positive = (name, opts, counts) => addVector(prefix + name,
+    "Compatibility: allowed optional/additive data and ledger segments remain valid.", build(opts),
+    { valid: true, ...(counts ? { counts } : {}), timestamp: "none" });
+  positive("valid-additive-fields", {
+    entries: rechain((v, i) => { v.extension = { future: true }; if (i === 2) v.kind = "future_event"; }),
+    extra: { futurePredicateField: { enabled: true } },
+    mutateStatement: s => { s.futureStatementField = true; s.predicate.range.futureRangeField = true; },
+  });
+  positive("valid-partial-range", { entries: BASE.slice(2).map(full), range: { fromSeq: 2, toSeq: 4, prevHashBefore: BASE[1].hash } });
+  positive("valid-single-event", { entries: [full(BASE[2])], range: { fromSeq: 2, toSeq: 2, prevHashBefore: BASE[1].hash } });
+  positive("valid-all-stubs", { entries: BASE.map(stub) });
+  positive("valid-legacy-stub", { entries: BASE.map(e => { const s = stub(e); delete s.stub.kind; return s; }) });
+  if (!prefix) {
+    for (const field of ["project", "generator", "exportedAtMs"])
+      negative(`invalid-missing-${field}`, "predicate", { mutateStatement: s => { delete s.predicate[field]; } });
+    negative("invalid-exported-at-ms-type", "predicate", { mutateStatement: s => { s.predicate.exportedAtMs = "1789000100000"; } });
+    negative("invalid-session-chain-profile", "predicateType", { predicateType: SC_TYPE });
+    positive("valid-legacy-no-redaction-count", { mutateStatement: s => { delete s.predicate.redactionCount; } });
+    negative("invalid-missing-nonzero-redaction-count", "redactionCount", { entries: caseEntries(), mutateStatement: s => { delete s.predicate.redactionCount; } });
+  } else {
+    positive("valid-optional-metadata-absent", { mutateStatement: s => {
+      for (const field of ["project", "generator", "caseId", "ledgerHead"]) delete s.predicate[field];
+    } });
+    negative("invalid-missing-redaction-count", "redactionCount", { mutateStatement: s => { delete s.predicate.redactionCount; } });
+    negative("invalid-exported-at-calendar", "exportedAt", { mutateStatement: s => { s.predicate.exportedAt = "2026-02-30T12:00:00Z"; } });
+    const artifacts = s => {
+      s.predicate.evidence = s.subject[0];
+      s.subject = [{ name: "build/result", digest: { sha256: "a".repeat(64) } }];
+    };
+    positive("valid-artifact-evidence", { mutateStatement: artifacts });
+    negative("invalid-evidence-digest", "digest", { mutateStatement: s => { artifacts(s); s.predicate.evidence.digest.sha256 = "b".repeat(64); } });
+    negative("invalid-repeated-segment-digest", "digest", { mutateStatement: s => {
+      artifacts(s); s.subject.push({ name: s.predicate.evidence.name, digest: { sha256: "c".repeat(64) } });
+    } });
+  }
+}
 
 fs.mkdirSync(OUT, { recursive: true });
 const manifest = {

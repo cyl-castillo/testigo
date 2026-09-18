@@ -9,7 +9,7 @@ as [`vectors/manifest.json`](vectors/manifest.json) on every packet in
 
 Each vector isolates **one** verification step: everything before the
 targeted check passes, the targeted check fails (or, for `valid-*`,
-everything passes). Three of them are *producer bugs signed over* —
+everything passes). Producer bugs are *signed over* —
 `invalid-digest`, `invalid-linkage`, `invalid-content-hash` carry a **valid
 signature** around an internal defect, because that is exactly the laundering
 a verifier must catch instead of stopping at "signature OK".
@@ -73,13 +73,28 @@ direction is a conformance failure.
 ```
 node verify.mjs                      # run the whole suite (exits non-zero on any mismatch)
 node verify.mjs some.proofpack.json  # verify a single packet, print the verdict JSON
+node verify.mjs --profile session-chain ../predicate/vectors/sc-valid-minimal.proofpack.json
+node browser-test.mjs               # actual HTML script + WebCrypto in a minimal DOM
+node validation-test.mjs            # independent signature checks and profile boundaries
 ```
 
-[`verify.mjs`](verify.mjs) is also a minimal **reference verifier** (~120
-lines, Node ≥ 20, zero dependencies), written from the spec independently of
-the generator. The suite passing means two independent code paths — this one
-and the [browser verifier](../verifier/testigo-verifier.html) — agree on
-every vector.
+[`verify.mjs`](verify.mjs) is a **reference verifier** (Node ≥ 20, zero
+dependencies), maintained separately from the generator, CLI and browser.
+Its default profile is Testigo; session-chain requires explicit selection.
+Running `verify.mjs` alone checks the reference implementation; run
+`browser-test.mjs` and `../cli/test.mjs` for the other implementations.
+The browser test uses the actual embedded script and Node WebCrypto with a
+minimal DOM; it is not a visual or cross-browser compatibility test.
+
+The profile regression vectors cover signed unknown predicate types, wrong
+statement/payload types, required metadata, false range bounds, sequence
+gaps/duplicates/types across full, redacted and stub entries, and malformed
+structures. Full-line sequence mutations rehash and relink the entire chain;
+digests and signatures are regenerated, so a stale signature cannot hide the
+semantic failure. Positive guards cover additive fields, unknown kinds,
+partial/single-event ranges, all-stub segments, legacy optional fields, and
+the draft's artifact/evidence path. The manifests are the complete inventory.
+See [validation compatibility and test notes](../docs/validation-review.md).
 
 ## The conformance key
 
