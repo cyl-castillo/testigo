@@ -94,11 +94,35 @@ Honesty first (it's the protocol's house style):
 
 ## Correctness
 
-`node test.mjs` runs the end-to-end suite: hook capture (including
+`npm test` runs the end-to-end and concurrency suites: hook capture (including
 interleaved sessions and a crash-torn tail healing), case linking, export
 with auto + manual redaction and out-of-case stubs, verification by both
 this CLI's verifier and the [conformance suite's](../conformance/)
 independent one — and requires the CLI verifier to reproduce the manifest
-verdict on **every conformance vector**. Concurrent hook appends are
-serialized by an advisory lock (parallel tool calls are real; a fork in the
-chain would be corruption).
+verdict on **every conformance vector**. The concurrency suite launches 24
+sessions in separate processes and checks event counts, turn/case bindings,
+overlapping prompts/stops/links, append failures, and lock ownership. A
+deterministic interleaving checks that a waiting hook selects its binding
+only after acquiring the lock.
+
+For cooperating writers on one host, each hook and case link selects its
+binding and appends under the same per-project lock. Session and case state
+is derived from the ledger within that lock; there is no second state write
+that can overwrite another session or fail before an event is recorded.
+Old `state/*.json` cache files are ignored and may be removed. Concurrent
+events within one session follow lock acquisition order; the engine does
+not provide enough information to reconstruct a different causal order.
+This adds a state projection over the ledger already read for each append;
+append work remains linear in ledger size.
+
+Witnessing remains best effort: lock contention times out after five
+seconds, and a crash or storage failure can still leave an event unrecorded
+(a failed fsync can leave its durability uncertain). Hooks still exit 0;
+`TESTIGO_DEBUG=1` reports failures. A live lock is never stolen based on age.
+A confirmed dead owner can be reclaimed, but an ownerless lock (including
+an old-version lock, or a crash between directory creation and owner
+registration/removal) requires manual removal **after confirming no writer
+is active**. PID reuse or an inaccessible owner can also prevent automatic
+reclamation. Upgrade all writers together; mixed versions and shared
+storage across hosts are not covered by this locking guarantee. Existing
+torn-tail handling is unchanged.
