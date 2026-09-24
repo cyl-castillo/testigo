@@ -24,8 +24,9 @@ loads, and the file input. They require literal text, no injected elements, and
 no handler execution. Signature-valid attack fixtures only establish signature
 validity; their internal validation failures are intentional.
 
-Both conformance manifests are checked with the reference verifier, and all
-28 golden packets are rendered in the browser. Browser checks preserve existing
+Both conformance manifests are checked with the reference verifier, all 34
+golden packets are rendered in the browser, and the byte-exact content-hash
+vectors must report exactly one failed event each. Browser checks preserve existing
 messages and rendering; they do not add validation rules or claim that the HTML
 verifier enforces the session-chain draft's migration guards.
 

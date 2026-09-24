@@ -1,12 +1,11 @@
-// Regression coverage for byte-exact event hashes, using the real ledger,
-// packet verifiers and the standalone browser verifier's script.
+// Regression coverage for byte-exact event hashes, using the real ledger and
+// the packet verifiers. The standalone browser verifier is covered in a real
+// browser by verifier/test.mjs ("byte-exact content hashes"), not simulated here.
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 import { append, ledgerPath, readLedger, verifyChain } from "../cli/lib/ledger.mjs";
@@ -16,32 +15,6 @@ import { verifyPacket as referenceVerify } from "./verify.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
-const html = fs.readFileSync(path.join(HERE, "../verifier/testigo-verifier.html"), "utf8");
-const browserScript = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-
-async function browserChecks(packet) {
-  // This DOM adapter collects the verifier's actual status messages. Web
-  // Crypto is real; markup behavior is outside this hash regression's scope.
-  const elements = new Map();
-  const element = () => ({
-    style: {}, children: [], textContent: "", innerHTML: "", className: "",
-    addEventListener() {}, classList: { add() {}, remove() {} },
-    append(...children) { this.children.push(...children); },
-    appendChild(child) { this.children.push(child); },
-  });
-  const document = {
-    getElementById(id) {
-      if (!elements.has(id)) elements.set(id, element());
-      return elements.get(id);
-    },
-    createElement: element,
-  };
-  const context = vm.createContext({ document, crypto: crypto.webcrypto, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, atob, btoa, URL, Blob });
-  vm.runInContext(browserScript, context);
-  await context.load({ text: async () => JSON.stringify(packet) });
-  return elements.get("checks").children;
-}
-
 test("CLI and reference verifiers retain all conformance verdicts", () => {
   for (const dir of [path.join(HERE, "vectors"), path.join(HERE, "../predicate/vectors")]) {
     const manifest = read(path.join(dir, "manifest.json"));
@@ -59,27 +32,6 @@ test("CLI and reference verifiers retain all conformance verdicts", () => {
         if (vector.expect.counts) assert.deepEqual(result.counts, vector.expect.counts, vector.file);
         if (vector.expect.timestamp) assert.equal(result.timestamp, vector.expect.timestamp, vector.file);
       }
-    }
-  }
-});
-
-test("browser checks content hashes without discarding bytes", async () => {
-  const files = [
-    "valid-minimal", "valid-redacted-stub", "valid-hash-whitespace", "valid-payload-hash",
-    "invalid-member-after-hash", "invalid-payload-after-hash", "invalid-escaped-payload-after-hash", "invalid-hash-trailing-whitespace",
-  ];
-  for (const name of files) {
-    const checks = await browserChecks(read(path.join(HERE, "vectors", `${name}.proofpack.json`)));
-    const messages = checks.map((check) => check.textContent);
-    assert.ok(messages.some((text) => text.includes("Signature valid")), `${name}: signature must pass`);
-    assert.ok(messages.some((text) => text.includes("Subject digest matches")), `${name}: digest must pass`);
-    assert.ok(messages.some((text) => text.includes("Hash chain linkage intact")), `${name}: linkage must pass`);
-    const failures = checks.filter((check) => check.className === "check fail");
-    if (name.startsWith("invalid-")) {
-      assert.equal(failures.length, 1, name);
-      assert.match(failures[0].textContent, /1 event\(s\) failed content hash recomputation/, name);
-    } else {
-      assert.equal(failures.length, 0, name);
     }
   }
 });

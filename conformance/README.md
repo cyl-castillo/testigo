@@ -79,7 +79,8 @@ direction is a conformance failure.
 ```
 node verify.mjs                      # run the whole suite (exits non-zero on any mismatch)
 node verify.mjs some.proofpack.json  # verify a single packet, print the verdict JSON
-node --test hash.test.mjs           # hash regressions: ledger, export, CLI, reference and browser script
+node --test hash.test.mjs           # hash regressions: ledger, export, CLI and reference verifier
+                                    # (the browser verifier: `npm test` in ../verifier, real browser)
 ```
 
 [`verify.mjs`](verify.mjs) is also a minimal **reference verifier** (~120
