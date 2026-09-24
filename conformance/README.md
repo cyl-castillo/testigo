@@ -9,7 +9,7 @@ as [`vectors/manifest.json`](vectors/manifest.json) on every packet in
 
 Each vector isolates **one** verification step: everything before the
 targeted check passes, the targeted check fails (or, for `valid-*`,
-everything passes). Three of them are *producer bugs signed over* —
+everything passes). Several of them are *producer bugs signed over* —
 `invalid-digest`, `invalid-linkage`, `invalid-content-hash` carry a **valid
 signature** around an internal defect, because that is exactly the laundering
 a verifier must catch instead of stopping at "signature OK".
@@ -25,6 +25,12 @@ a verifier must catch instead of stopping at "signature OK".
 | `invalid-digest` | step 4 | reject: subject digest ≠ packed events (signature valid!) |
 | `invalid-linkage` | step 5 | reject: chain broken at a stub (signature + digest valid!) |
 | `invalid-content-hash` | step 6 | reject: clean line doesn't recompute (linkage holds!) |
+| `invalid-member-after-hash` | §1.5 / step 6 | reject: an extra member after `hash` must not be discarded during recomputation |
+| `invalid-payload-after-hash` | §1.5 / step 6 | reject: a duplicate `payload` after `hash` changes the parsed event while keeping its stored hash |
+| `invalid-escaped-payload-after-hash` | §1.5 / step 6 | reject: the same override with an escaped JSON member name |
+| `invalid-hash-trailing-whitespace` | §1.5 / step 6 | reject: whitespace added after sealing changes the hashed bytes |
+| `valid-hash-whitespace` | §1.5 | valid: whitespace present when sealing must be preserved during recomputation |
+| `valid-payload-hash` | §1.5 | valid: nested `hash` members and quoted hash-like text remain part of the payload |
 | `invalid-redaction-count` | §2.3 / step 6 | reject: `redactionCount` ≠ redacted entries — **stubs are not redactions** |
 | `valid-process-context` | §2.6 | valid; predicate carries provider / contextArtifacts / session window / owner derived from the events — a verifier that rejects unknown predicate fields is wrong |
 | `invalid-timestamp-window` | §2.6 / step 6c | reject: `startTimestamp` one second off the first line's `ts` (signature valid!) — the window is a claim about the hashed lines and MUST be checked |
@@ -73,6 +79,7 @@ direction is a conformance failure.
 ```
 node verify.mjs                      # run the whole suite (exits non-zero on any mismatch)
 node verify.mjs some.proofpack.json  # verify a single packet, print the verdict JSON
+node --test hash.test.mjs           # hash regressions: ledger, export, CLI, reference and browser script
 ```
 
 [`verify.mjs`](verify.mjs) is also a minimal **reference verifier** (~120

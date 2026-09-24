@@ -189,9 +189,14 @@ export function verifyChain(root) {
     } catch {
       return { ok: false, total: lines.length, brokenAtSeq: i, tornTail };
     }
-    const idx = line.lastIndexOf('"hash":"');
-    const recomputed = sha256hex(Buffer.from(line.slice(0, idx) + '"hash":""}', "utf8"));
-    if (v.seq !== i || v.prevHash !== prev || recomputed !== v.hash) {
+    // Require the final member and empty only its value. Rebuilding the
+    // suffix would silently drop added members (including a second payload).
+    const field = /("hash"\s*:\s*")([0-9a-f]{64})("\s*}\s*)$/.exec(line);
+    const unhashed = field && field[2] === v.hash
+      ? line.slice(0, field.index) + field[1] + field[3]
+      : null;
+    const recomputed = unhashed === null ? null : sha256hex(Buffer.from(unhashed, "utf8"));
+    if (unhashed === null || v.seq !== i || v.prevHash !== prev || recomputed !== v.hash) {
       return { ok: false, total: lines.length, brokenAtSeq: v.seq ?? i, tornTail };
     }
     prev = v.hash;

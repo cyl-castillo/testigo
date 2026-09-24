@@ -325,6 +325,59 @@ add(
   { valid: false, firstFailure: "contentHash" },
 );
 
+// A verifier must not rebuild the end of a line by discarding everything
+// after hash. These mutations keep the original event hashes and linkage;
+// the packet signature and subject digest cover the mutated bytes.
+for (const [name, suffix, description] of [
+  ["member", ',"unhashed":true}', "An additional member follows hash."],
+  ["payload", ',"payload":{"prompt":"replaced after sealing"}}', "A duplicate payload after hash overrides the original prompt when parsed."],
+  ["escaped-payload", ',"paylo\\u0061d":{"prompt":"replaced after sealing"}}', "An escaped duplicate payload key after hash overrides the original prompt when parsed."],
+]) {
+  const entries = BASE.map(full);
+  entries[1].line = entries[1].line.slice(0, -1) + suffix;
+  add(
+    `invalid-${name}-after-hash`,
+    `${description} Original hashes and linkage are unchanged; signature and subject digest verify. MUST fail contentHash: hash must be the final member and no bytes may be discarded.`,
+    packet({ entries, range: FULL_RANGE, head: HEAD }),
+    { valid: false, firstFailure: "contentHash" },
+  );
+}
+
+add(
+  "invalid-hash-trailing-whitespace",
+  "Whitespace appended after sealing is still a byte change: the original content hash no longer matches. Signature, subject digest and linkage verify; MUST fail contentHash.",
+  (() => {
+    const entries = BASE.map(full);
+    entries[1].line += " \t";
+    return packet({ entries, range: FULL_RANGE, head: HEAD });
+  })(),
+  { valid: false, firstFailure: "contentHash" },
+);
+
+add(
+  "valid-hash-whitespace",
+  "A noncanonical line sealed with whitespace around its final hash member and after the closing brace. Preserve every byte except the hash value; do not canonicalize or trim.",
+  (() => {
+    const v = JSON.parse(BASE[0].line);
+    v.hash = "";
+    const unhashed = JSON.stringify(v).replace('"hash":""}', '"hash" : "" } \t');
+    const hash = sha256hex(Buffer.from(unhashed, "utf8"));
+    const line = unhashed.replace('"hash" : ""', `"hash" : "${hash}"`);
+    return packet({ entries: [{ line, redacted: false }], range: { fromSeq: 0, toSeq: 0, prevHashBefore: "genesis" }, head: { seq: 0, hash } });
+  })(),
+  { valid: true, counts: { entries: 1, recomputed: 1, redacted: 0, stubs: 0 }, timestamp: "none" },
+);
+
+add(
+  "valid-payload-hash",
+  "A payload may contain nested hash members and hash-like quoted text. Only the final event-level hash value is emptied; all payload bytes remain covered.",
+  (() => {
+    const l = ledger([{ caseId: CASE, kind: "tool_result", actor: "agent", payload: { hash: "a".repeat(64), nested: { hash: "b".repeat(64) }, excerpt: 'literal "hash":"value" — café' } }]);
+    return packet({ entries: l.map(full), range: { fromSeq: 0, toSeq: 0, prevHashBefore: "genesis" }, head: { seq: 0, hash: l[0].hash } });
+  })(),
+  { valid: true, counts: { entries: 1, recomputed: 1, redacted: 0, stubs: 0 }, timestamp: "none" },
+);
+
 add(
   "invalid-redaction-count",
   "Producer bug signed over: redactionCount does not equal the number of redacted entries (§2.3 — stubs are NOT redactions). Everything else verifies; the miscount misrepresents what was withheld. MUST fail §2.4 step 6.",
