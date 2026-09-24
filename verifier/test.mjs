@@ -194,6 +194,27 @@ test("browser rendering treats packet values as text", async (t) => {
       }
     });
 
+    await t.test("byte-exact content hashes: one failed event, nothing else", async () => {
+      // Formerly a vm-simulated DOM check in conformance/hash.test.mjs; the
+      // row rendering is DOM-built now, so it runs where the page really runs.
+      const files = [
+        "valid-minimal", "valid-redacted-stub", "valid-hash-whitespace", "valid-payload-hash",
+        "invalid-member-after-hash", "invalid-payload-after-hash", "invalid-escaped-payload-after-hash", "invalid-hash-trailing-whitespace",
+      ];
+      for (const name of files) {
+        const state = await render(vector(name));
+        for (const text of ["Signature valid", "Subject digest matches", "Hash chain linkage intact"]) assert.ok(state.checks.includes(text), `${name}: ${text}`);
+        // The one-line summary also carries .fail; count the individual checks only.
+        const failures = await page.locator("#checks .fail:not(#summary)").allTextContents();
+        if (name.startsWith("invalid-")) {
+          assert.equal(failures.length, 1, name);
+          assert.match(failures[0], /1 event\(s\) failed content hash recomputation/, name);
+        } else {
+          assert.deepEqual(failures, [], name);
+        }
+      }
+    });
+
     await t.test("file picker still loads an ordinary packet", async () => {
       await page.reload();
       const packet = vector("valid-minimal");
