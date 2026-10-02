@@ -75,6 +75,13 @@ carries the record's location and sha256, a receiver with the platform's
 copy recomputes it. This is how a packet composes with what the platforms
 already log instead of competing with it.
 
+Packets also record **how the turn ended**: a `check_run` event when the
+agent runs a recognized test or check command (passed or failed, exit code,
+sha256 of the full output) and a `commit` event when the work reaches git
+(SPEC §1.7). They are declared by the producer and the verifier labels them
+that way; what makes them checkable is what they bind — the output digest
+and the commit sha.
+
 Lightweight capture without the console: [`cli/`](cli/) is a zero-dependency
 Node CLI that witnesses any Claude Code session via hooks, links cases, and
 exports signed packets — with the capture-scope differences

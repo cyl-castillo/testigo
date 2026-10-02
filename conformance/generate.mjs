@@ -543,6 +543,30 @@ add(
   { valid: true, counts: { entries: 5, recomputed: 5, redacted: 0, stubs: 0 }, timestamp: "none" },
 );
 
+// Outcome events (§1.7): how the turn ended, in the terms a reviewer reads
+// first. A passing and a failing check_run beside their tool results, and the
+// agent's commit. They are producer-declared; what the vector pins is that a
+// verifier passes the kinds (unknown to pre-v0.2 verifiers, which ignore
+// them) and never presents them as verified.
+
+const CHECK_OUT_SHA = sha256hex(Buffer.from("test result: ok. 14 passed", "utf8"));
+const FAIL_OUT_SHA = sha256hex(Buffer.from("Exit code 1\n1 failing", "utf8"));
+const OUTCOMES = ledger([
+  { caseId: CASE, kind: "prompt", actor: "human", turnId: "turn-1", termId: "t-1", payload: { prompt: "fix the failing test", cwd: "/proj" } },
+  { caseId: CASE, kind: "tool_result", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { tool: "Bash", excerpt: "1 failing", truncated: false, failed: true } },
+  { caseId: CASE, kind: "check_run", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { command: "npm test", status: "failed", exitCode: 1, outputSha256: FAIL_OUT_SHA } },
+  { caseId: CASE, kind: "tool_result", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { tool: "Bash", excerpt: "test result: ok. 14 passed", truncated: false } },
+  { caseId: CASE, kind: "check_run", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { command: "npm test", status: "passed", outputSha256: CHECK_OUT_SHA, durationMs: 4200 } },
+  { caseId: CASE, kind: "commit", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { sha: "3f2a9c1d0b7e4a5f6c8d9e0f1a2b3c4d5e6f7a8b", subject: "Fix token expiry check", files: ["src/auth.ts"], filesTruncated: false, amend: false, via: "terminal" } },
+  { caseId: CASE, kind: "turn_end", actor: "agent", turnId: "turn-1", termId: "t-1", payload: { filesChanged: [{ status: "M", path: "src/auth.ts" }] } },
+]);
+add(
+  "valid-outcome-events",
+  "Chain with outcome events (§1.7): a failing then a passing check_run beside their tool results (one marked failed: true), and the agent's commit. Valid; a verifier may summarize outcomes but MUST present them as producer-declared, never as verified.",
+  packet({ entries: OUTCOMES.map(full), caseId: CASE, range: { fromSeq: 0, toSeq: 6, prevHashBefore: "genesis" }, head: { seq: 6, hash: OUTCOMES.at(-1).hash } }),
+  { valid: true, counts: { entries: 7, recomputed: 7, redacted: 0, stubs: 0 }, timestamp: "none" },
+);
+
 // ---- timestamp vectors (need the one-time token fixture) -------------------
 
 if (fs.existsSync(TOKEN_FIXTURE)) {

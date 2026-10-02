@@ -18,7 +18,7 @@ const HELP = `testigo — witness CLI for the Testigo protocol (spec: github.com
 usage: testigo <command> [options]
 
   init [--user] [--print] [--command CMD]
-        Install the six capture hooks into Claude Code settings
+        Install the seven capture hooks into Claude Code settings
         (./.claude/settings.json; --user targets ~/.claude/settings.json;
         --print only shows the JSON). Existing settings are merged, a .bak
         is written first.
@@ -55,7 +55,8 @@ usage: testigo <command> [options]
 
 Captured via hooks: session starts (engine + model when sent), prompts (with
 the digests of CLAUDE.md / .claude/CLAUDE.md / AGENTS.md present in cwd),
-tool calls, tool results, model switches, turn ends — bound by the engine's
+tool calls, tool results (failed ones too), test/check runs (check_run),
+model switches, turn ends — bound by the engine's
 session id. NOT captured: human approval decisions (Claude Code
 hooks don't expose the permission dialog); producers in the permission path,
 like agent-console, add those.`;

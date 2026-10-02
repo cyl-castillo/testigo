@@ -234,6 +234,20 @@
       }
     },
     {
+      "file": "valid-outcome-events.proofpack.json",
+      "description": "Chain with outcome events (§1.7): a failing then a passing check_run beside their tool results (one marked failed: true), and the agent's commit. Valid; a verifier may summarize outcomes but MUST present them as producer-declared, never as verified.",
+      "expect": {
+        "valid": true,
+        "counts": {
+          "entries": 7,
+          "recomputed": 7,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      }
+    },
+    {
       "file": "valid-timestamped.proofpack.json",
       "description": "Valid packet carrying a real RFC 3161 token over its signature (§2.5). Verifiers SHOULD report it as declared — and MUST NOT claim cryptographic token verification without a CMS stack.",
       "expect": {

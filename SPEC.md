@@ -1,7 +1,8 @@
 # Testigo protocol — v0.2 (draft)
 
 > **v0.2 is additive.** It adds the `session_start` / `model_switch` /
-> `tool_call` event kinds and the `prompt.payload.context` member (§1.7),
+> `tool_call` / `external_evidence` / `check_run` / `commit` event kinds and
+> the `prompt.payload.context` member (§1.7),
 > and the **process context** predicate fields (§2.6): `provider`,
 > `contextArtifacts`, `startTimestamp` / `endTimestamp`, `owner`. The packet
 > `format` (`testigo-proofpack/v0.1`) and the predicate type URI are
@@ -141,7 +142,7 @@ anchored values found in refs or commit trailers.
 | `prompt` | human | `{prompt, skill?, cwd?}` — opens a turn |
 | `approval_request` | agent | `{approvalId, tool, input (bounded), cwd?}` |
 | `approval_decision` | human | `{approvalId, tool?, decision: allow\|deny\|ask, reason?}` |
-| `tool_result` | agent | `{tool?, excerpt (bounded), truncated}` |
+| `tool_result` | agent | `{tool?, excerpt (bounded), truncated, failed?}` — `failed: true` when the engine reported the tool call as failed (v0.2) |
 | `snapshot` | system | `{commitSha}` — working-tree checkpoint (git) |
 | `turn_end` | agent | `{preSha?, postSha?, filesChanged?: [{status, path}], filesTruncated?}` — closes a turn |
 | `case_link` | system | `{}` (binding carried by `caseId` + `termId`) |
@@ -150,6 +151,8 @@ anchored values found in refs or commit trailers.
 | `model_switch` | system | `{from, to}` — a mid-session model change (v0.2) |
 | `tool_call` | agent | `{tool, input (bounded), truncated}` — a tool invocation whose approval status the producer cannot see (producers outside the permission path, e.g. testigo-cli) |
 | `external_evidence` | system | `{source, uri, sha256, bytes, mediaType?, note?}` — a commitment to a record held elsewhere (v0.2): `source` names the system (`claude-code-transcript`, `anthropic-compliance-api`, `github-agent-logs`, `file`, `url`), `sha256` is over the bytes the producer saw |
+| `check_run` | agent | `{command, status: passed\|failed, exitCode?, outputSha256?, durationMs?, toolUseId?}` — a recognized test/check runner finished inside the turn (v0.2): `status` is what the engine reported (the tool completed vs. the tool failed), `outputSha256` is over the full output the producer saw, `command` is size-bounded |
+| `commit` | human \| agent | `{sha, subject, files: [path], filesTruncated, amend, via?}` — work reached git (v0.2): `actor` says who committed, `sha` is the commit as recorded, `subject` and `files` are bounded |
 
 **External evidence.** Platforms keep their own record of an agent session
 — Claude Code writes a transcript on disk and Anthropic's Compliance API
@@ -162,6 +165,20 @@ bytes at capture time (a transcript keeps growing after a turn ends);
 verifiers do not fetch anything and MUST NOT report the record as verified
 — only the commitment is. testigo-cli records the Claude Code transcript at
 every turn end and attaches any file or URL with `testigo attach`.
+
+**Outcome events.** `check_run` and `commit` record how a turn ended
+in terms a reviewer checks first: did the tests run, what did they say,
+and did the work reach the repository. They are **producer-declared**,
+like every payload: a `check_run` with `status: passed` says the engine
+reported the runner's tool call as completed, not that the suite is
+meaningful, and runner recognition is an allow-list (a miss records
+nothing). What makes them checkable is what they bind: a receiver holding
+the runner's output recomputes `outputSha256`, and a receiver with access
+to the repository looks up `sha`. Verifiers MAY summarize outcome events
+and MUST present them as declared, never as verified. Outcomes that happen
+after a packet is signed (acceptance, reversion, incident, dispute) are out
+of scope for the chain; they belong in a separate attestation whose subject
+is the packet.
 
 The `prompt` payload MAY carry `context: [{uri, sha256}]` (v0.2): the
 instruction files (`CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`, or the

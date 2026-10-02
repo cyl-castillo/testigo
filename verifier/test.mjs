@@ -169,6 +169,34 @@ test("browser rendering treats packet values as text", async (t) => {
       }
     });
 
+    await t.test("outcome events render as declared and every field stays text", async () => {
+      const ordinary = await render(vector("valid-outcome-events"));
+      assert.ok(ordinary.checks.includes("Signature valid"));
+      assert.equal(ordinary.rows[1][3], "tool=Bash · failed");
+      assert.match(ordinary.rows[2][3], /^failed \(exit 1\) · npm test · output sha256 [0-9a-f]{12}…$/);
+      assert.match(ordinary.rows[4][3], /^passed · npm test · output sha256 [0-9a-f]{12}…$/);
+      assert.equal(ordinary.rows[5][3], "3f2a9c1d0b Fix token expiry check · 1 file(s)");
+      assert.ok(ordinary.meta.includes("outcomes (declared by the producer): checks 1 passed, 1 failed · commits 3f2a9c1d0b"), "summary is labelled as declared");
+      assert.ok(!/verified/i.test(ordinary.meta), "outcomes are never presented as verified");
+      for (const field of ["command", "status", "outputSha256"]) {
+        const value = field === "outputSha256" ? "<b>hash</b>" : attack;
+        const packet = mutate((pred) => {
+          const e = pred.events[2];
+          const v = JSON.parse(e.line);
+          e.line = JSON.stringify({ ...v, payload: { ...v.payload, [field]: value } });
+        }, true, "valid-outcome-events");
+        const state = await render(packet);
+        assert.ok(state.rows[2][3].includes(field === "outputSha256" ? value.slice(0, 12) : value), `${field}: literal detail`);
+      }
+      const commitAttack = mutate((pred) => {
+        const e = pred.events[5];
+        const v = JSON.parse(e.line);
+        e.line = JSON.stringify({ ...v, payload: { ...v.payload, sha: attack, subject: attack } });
+      }, true, "valid-outcome-events");
+      const state = await render(commitAttack);
+      assert.ok(state.rows[5][3].includes(attack), "commit subject stays text");
+    });
+
     await t.test("all golden vectors render with existing verification messages", async () => {
       const failures = {
         format: "Unknown format:", keyid: "Embedded key id does not match", signature: "Signature INVALID",
