@@ -39,7 +39,8 @@ function run(executable, args, options = {}) {
 }
 const cli = (args, options) => run(process.execPath, [CLI, ...args], options);
 const readJSON = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
-const events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostModelSwitch", "Stop"];
+// Must match hooksConfig: seven events since PostToolUseFailure joined main.
+const events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PostModelSwitch", "Stop"];
 
 const bash = process.platform === "win32"
   ? [process.env.TESTIGO_TEST_BASH, path.join(process.env.ProgramFiles ?? "C:/Program Files", "Git/bin/bash.exe"),
@@ -81,7 +82,7 @@ test("init merges settings and remains idempotent with quoted commands", () => {
   fs.mkdirSync(path.dirname(settings), { recursive: true });
   const existing = { permissions: { allow: [] }, hooks: { Stop: [{ hooks: [{ type: "command", command: "echo existing" }] }] } };
   fs.writeFileSync(settings, JSON.stringify(existing));
-  assert.match(cli(["init", "--root", root]), /installed 6 entries/);
+  assert.match(cli(["init", "--root", root]), /installed 7 entries/);
   assert.deepEqual(readJSON(`${settings}.bak`), existing);
   const once = readJSON(settings);
   assert.match(cli(["init", "--root", root]), /already installed/);
@@ -120,7 +121,7 @@ for (const [shell, executable, flags] of [
       const { settings, original } = seedSettings(root, Object.fromEntries(events.map((event) =>
         [event, [{ hooks: [{ type: "command", command: prePRCommand }] }]])));
       const options = ["init", "--root", root, "--shell", shell];
-      assert.match(cli(options), /replaced 6 legacy entries/);
+      assert.match(cli(options), /replaced 7 legacy entries/);
       assert.deepEqual(readJSON(`${settings}.bak`), original);
       const upgraded = readJSON(settings);
       for (const event of events) {
@@ -130,10 +131,10 @@ for (const [shell, executable, flags] of [
         run(executable, [...flags, handlers[0].command], {
           input: JSON.stringify({ cwd: root, hook_event_name: event, session_id: shell,
             prompt: "one migrated prompt", model: "test-model", from_model: "before", to_model: "after",
-            tool_name: "Bash", tool_input: { command: "echo test" }, tool_response: "test" }),
+            tool_name: "Bash", tool_input: { command: "echo test" }, tool_response: "test", error: "test failure" }),
         });
       }
-      assert.match(cli(["verify", "--root", root]), /chain ok: 6 events/);
+      assert.match(cli(["verify", "--root", root]), /chain ok: 7 events/);
       assert.equal(cli(["log", "--root", root]).split("one migrated prompt").length - 1, 1);
       assert.match(cli(options), /already installed/);
       assert.deepEqual(readJSON(settings), upgraded);
@@ -153,10 +154,11 @@ test("init recognizes literal quoting, script path aliases, and different Node l
     { command: hookCommand(oldNode + ".exe", CLI, "powershell"), shell: "powershell" },
     { command: hookCommand("nodejs", path.relative(root, CLI)) },
     { command: hookCommand("node", `${path.dirname(CLI)}/../bin/testigo.mjs`) },
+    { command: `node ${doubleQuote(CLI)} hook` },
   ];
   const { settings } = seedSettings(root, Object.fromEntries(events.map((event, i) =>
     [event, [{ hooks: [{ type: "command", ...handlers[i] }] }]])));
-  assert.match(cli(["init", "--root", root]), /replaced 6 legacy entries/);
+  assert.match(cli(["init", "--root", root]), /replaced 7 legacy entries/);
   const expected = JSON.parse(cli(["init", "--print"]));
   assert.deepEqual(readJSON(settings).hooks, expected.hooks);
 });
@@ -181,7 +183,7 @@ test("init repairs mixed legacy/current duplicates without removing unrelated ho
     { hooks: [...unrelated, legacy] }, { hooks: [current] }, { matcher: "*", hooks: [legacy] },
     restricted, conditional,
   ]])));
-  assert.match(cli(["init", "--root", root]), /replaced 6 legacy entries; removed 12 duplicate entries/);
+  assert.match(cli(["init", "--root", root]), /replaced 7 legacy entries; removed 14 duplicate entries/);
   for (const event of events) {
     assert.deepEqual(readJSON(settings).hooks[event], [
       { hooks: [...unrelated, { ...legacy, ...current }] }, restricted, conditional,
