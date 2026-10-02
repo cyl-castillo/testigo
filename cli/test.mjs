@@ -31,7 +31,7 @@ process.env.GIT_CONFIG_GLOBAL = path.join(SANDBOX, "gitconfig");
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 
 // Import AFTER the env is set — lib paths read XDG at call time, but stay safe.
-const { handleHook } = await import("./lib/hook.mjs");
+const { handleHook, hooksConfig, isCheckCommand } = await import("./lib/hook.mjs");
 const { attachEvidence } = await import("./lib/evidence.mjs");
 const { append, ledgerPath, readLedger, verifyChain } = await import("./lib/ledger.mjs");
 const { exportPacket, preview } = await import("./lib/export.mjs");
@@ -201,6 +201,38 @@ const cliVerdict = JSON.parse(execFileSync(process.execPath, [path.join(HERE, "b
 assert.ok(cliVerdict.valid, "CLI verify-packet accepts overlapping redactions");
 assert.equal(cliVerdict.counts.redacted, sumOverlap.redactions, "CLI printed summary matches export summary");
 
+// ---- 3b. outcome events: test/check runs (§1.7 check_run) --------------------
+
+const ROOT2 = path.join(SANDBOX, "proj-checks");
+fs.mkdirSync(ROOT2, { recursive: true });
+const hook2 = (o) => handleHook({ cwd: ROOT2, ...o });
+const S3 = "session-checks";
+hook2({ hook_event_name: "UserPromptSubmit", session_id: S3, prompt: "fix the failing test" });
+const passOut = { stdout: "test result: ok. 14 passed", stderr: "", interrupted: false };
+hook2({ hook_event_name: "PostToolUse", session_id: S3, tool_name: "Bash", tool_input: { command: "cargo test --workspace" }, tool_response: passOut, duration_ms: 4200, tool_use_id: "toolu_1" });
+hook2({ hook_event_name: "PostToolUseFailure", session_id: S3, tool_name: "Bash", tool_input: { command: "npm test" }, error: "Exit code 1\n1 failing" });
+hook2({ hook_event_name: "PostToolUse", session_id: S3, tool_name: "Bash", tool_input: { command: "git status" }, tool_response: "clean" });
+hook2({ hook_event_name: "PostToolUseFailure", session_id: S3, tool_name: "Read", tool_input: { file_path: "x" }, error: "File does not exist." });
+hook2({ hook_event_name: "Stop", session_id: S3 });
+const ev2 = readLedger(ROOT2).parsed;
+assert.ok(verifyChain(ROOT2).ok, "chain with outcome events verifies");
+const checks = ev2.filter((e) => e.kind === "check_run");
+assert.equal(checks.length, 2, "only recognized runners leave a check_run (not git status, not Read)");
+const [okRun, failRun] = checks;
+assert.equal(okRun.payload.status, "passed");
+assert.equal(okRun.payload.command, "cargo test --workspace");
+assert.equal(okRun.payload.outputSha256, crypto.createHash("sha256").update(JSON.stringify(passOut)).digest("hex"), "digest over the full response as the hook saw it");
+assert.equal(okRun.payload.durationMs, 4200);
+assert.equal(okRun.payload.toolUseId, "toolu_1");
+assert.equal(okRun.seq, ev2.find((e) => e.kind === "tool_result").seq + 1, "check_run follows its tool_result");
+assert.equal(okRun.turnId, ev2.find((e) => e.kind === "prompt").turnId, "check_run binds to the open turn");
+assert.equal(failRun.payload.status, "failed");
+assert.equal(failRun.payload.exitCode, 1, "exit code parsed from Claude Code's failure text");
+const failedResults = ev2.filter((e) => e.kind === "tool_result" && e.payload.failed === true);
+assert.equal(failedResults.length, 2, "failed tool calls are recorded as tool_result with failed: true");
+assert.ok(isCheckCommand("cd app && pytest -q") && !isCheckCommand("echo done"), "runner allow-list");
+assert.ok(Object.hasOwn(hooksConfig("x"), "PostToolUseFailure"), "init wires the failure hook");
+
 // ---- 4. the conformance suite is the CLI verifier's oracle ------------------
 
 for (const dir of [path.join(HERE, "..", "conformance", "vectors"), path.join(HERE, "..", "predicate", "vectors")]) {
@@ -218,4 +250,4 @@ for (const dir of [path.join(HERE, "..", "conformance", "vectors"), path.join(HE
 }
 
 fs.rmSync(SANDBOX, { recursive: true, force: true });
-console.log("testigo-cli: all e2e assertions pass (capture, transcript evidence, attach, link, heal, export, redact, process context, verify ×2, conformance + session-chain vectors)");
+console.log("testigo-cli: all e2e assertions pass (capture, transcript evidence, check runs, attach, link, heal, export, redact, process context, verify ×2, conformance + session-chain vectors)");

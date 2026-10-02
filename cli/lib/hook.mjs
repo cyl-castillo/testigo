@@ -60,6 +60,61 @@ export function instructionContext(root) {
   return out;
 }
 
+/// Does this Bash command run a test/check suite? Same conservative
+/// allow-list as the reference implementation (agent-console): a hit adds a
+/// `check_run` outcome event beside the tool result (§1.7); a miss records
+/// nothing extra. Matches a runner at the start of a shell word.
+const CHECK_RUNNERS = [
+  String.raw`cargo\s+(test|clippy|check|fmt\s+--check)`,
+  String.raw`(npm|pnpm|yarn|bun)\s+(test|run\s+(test|tests|lint|typecheck|check|build|format:check))`,
+  String.raw`npx\s+(vitest|jest|playwright|tsc|eslint|prettier\s+--check|mocha)`,
+  String.raw`(vitest|jest|mocha|playwright\s+test|pytest|tox|nox|rspec|phpunit|dotnet\s+test|swift\s+test)`,
+  String.raw`python(3)?\s+-m\s+(pytest|unittest)`,
+  String.raw`go\s+(test|vet)`,
+  String.raw`make\s+(test|check|lint)`,
+  String.raw`(mvn|mvnw|\./mvnw)\s+(test|verify)`,
+  String.raw`(gradle|gradlew|\./gradlew)\s+(test|check)`,
+  String.raw`mix\s+test`,
+  String.raw`bundle\s+exec\s+rspec`,
+];
+const CHECK_RE = new RegExp(String.raw`(^|[\s;&|(])(` + CHECK_RUNNERS.join("|") + String.raw`)(\s|$)`);
+
+export function isCheckCommand(cmd) {
+  return typeof cmd === "string" && CHECK_RE.test(cmd);
+}
+
+/// Text of a tool response or error, as the engine handed it to the hook.
+function responseText(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/// A `check_run` outcome for a recognized runner (§1.7), or null.
+function checkRun(input, failed, text) {
+  const command = input.tool_input && typeof input.tool_input.command === "string" ? input.tool_input.command : "";
+  if (input.tool_name !== "Bash" || !isCheckCommand(command)) return null;
+  const b = bounded(command);
+  const payload = {
+    command: b.text,
+    ...(b.truncated ? { truncated: true } : {}),
+    status: failed ? "failed" : "passed",
+  };
+  if (failed) {
+    // Claude Code's failure text starts with "Exit code N" for shell commands.
+    const m = /^Exit code (\d+)/.exec(text.split("\n")[0].trim());
+    if (m) payload.exitCode = parseInt(m[1], 10);
+  }
+  if (text) payload.outputSha256 = sha256hex(Buffer.from(text, "utf8"));
+  if (typeof input.duration_ms === "number") payload.durationMs = input.duration_ms;
+  if (typeof input.tool_use_id === "string" && input.tool_use_id) payload.toolUseId = input.tool_use_id;
+  return payload;
+}
+
 /// Handle one hook invocation. The CLI catches failures and exits 0, so
 /// witnessing never breaks the user's session (TESTIGO_DEBUG=1 shows errors).
 export function handleHook(input) {
@@ -141,18 +196,24 @@ function hookEvent(input, state) {
         payload: { tool: input.tool_name ?? "", input: b.text, truncated: b.truncated },
       };
     }
-    case "PostToolUse": {
+    case "PostToolUse":
+    case "PostToolUseFailure": {
+      // A tool that failed (a test suite exiting non-zero) reaches
+      // PostToolUseFailure with the error text instead of a response.
+      const failed = input.hook_event_name === "PostToolUseFailure";
       const turnId = state.sessions[session]?.turnId;
-      const b = bounded(input.tool_response);
-      return {
-        caseId,
-        ...(turnId ? { turnId } : {}),
+      const raw = failed ? input.error : input.tool_response;
+      const b = bounded(raw);
+      const base = { caseId, ...(turnId ? { turnId } : {}), termId, sessionId: session, actor: "agent" };
+      const result = {
+        ...base,
         kind: "tool_result",
-        termId,
-        sessionId: session,
-        actor: "agent",
-        payload: { tool: input.tool_name ?? "", excerpt: b.text, truncated: b.truncated },
+        payload: { tool: input.tool_name ?? "", excerpt: b.text, truncated: b.truncated, ...(failed ? { failed: true } : {}) },
       };
+      // Outcome event (§1.7): a recognized test/check runner leaves a
+      // check_run beside its result, under the same binding and lock.
+      const check = checkRun(input, failed, responseText(raw));
+      return check ? [result, { ...base, kind: "check_run", payload: check }] : result;
     }
     case "Stop": {
       const open = state.sessions[session];
@@ -179,5 +240,5 @@ function hookEvent(input, state) {
 /// is how to reach this CLI on the machine.
 export function hooksConfig(command) {
   const h = [{ hooks: [{ type: "command", command }] }];
-  return { SessionStart: h, UserPromptSubmit: h, PreToolUse: h, PostToolUse: h, PostModelSwitch: h, Stop: h };
+  return { SessionStart: h, UserPromptSubmit: h, PreToolUse: h, PostToolUse: h, PostToolUseFailure: h, PostModelSwitch: h, Stop: h };
 }

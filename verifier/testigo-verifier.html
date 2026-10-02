@@ -271,6 +271,20 @@ async function load(f) {
   if (pred.owner) ctxLines.push(`owner (declared): ${pred.owner}`);
   if (Array.isArray(pred.contextArtifacts) && pred.contextArtifacts.length)
     ctxLines.push(`context artifacts: ${pred.contextArtifacts.map((a) => `${(a.tags || []).join("/") || "artifact"} ${a.uri ?? "(inline)"}${a.digest?.sha256 ? " sha256:" + a.digest.sha256.slice(0, 12) + "…" : ""}`).join(" · ")}`);
+  // Outcome events (§1.7), producer-declared: summarized, never presented as verified.
+  const outcome = { passed: 0, failed: 0, commits: [] };
+  for (const e of events) {
+    if (e.stub) continue;
+    let v = {}; try { v = JSON.parse(e.line); } catch {}
+    if (v.kind === "check_run") { if (v.payload?.status === "passed") outcome.passed++; else if (v.payload?.status === "failed") outcome.failed++; }
+    if (v.kind === "commit" && v.payload?.sha) outcome.commits.push(String(v.payload.sha).slice(0, 10));
+  }
+  if (outcome.passed || outcome.failed || outcome.commits.length) {
+    const parts = [];
+    if (outcome.passed || outcome.failed) parts.push(`checks ${outcome.passed} passed, ${outcome.failed} failed`);
+    if (outcome.commits.length) parts.push(`commits ${outcome.commits.join(", ")}`);
+    ctxLines.push(`outcomes (declared by the producer): ${parts.join(" · ")}`);
+  }
   if (ctxLines.length) {
     const c = document.createElement("div");
     c.className = "mono muted";
@@ -295,7 +309,7 @@ async function load(f) {
       if (v.kind === "prompt") detail = (p.prompt || "").slice(0, 140);
       else if (v.kind === "approval_request") detail = `tool=${p.tool ?? ""}`;
       else if (v.kind === "approval_decision") detail = `${p.decision ?? ""}${p.reason ? " — " + p.reason : ""} (tool=${p.tool ?? ""})`;
-      else if (v.kind === "tool_result") detail = `tool=${p.tool ?? ""}`;
+      else if (v.kind === "tool_result") detail = `tool=${p.tool ?? ""}${p.failed ? " · failed" : ""}`;
       else if (v.kind === "snapshot") detail = `sha=${(p.commitSha || "").slice(0, 10)}`;
       else if (v.kind === "turn_end") detail = (p.filesChanged || []).map((f) => `${f.status} ${f.path}`).join(", ").slice(0, 200) || "(no diff captured)";
       else if (v.kind === "case_link") detail = v.caseId;
@@ -303,6 +317,8 @@ async function load(f) {
       else if (v.kind === "session_start") detail = `${p.engine ?? ""}${p.model ? " model=" + p.model : ""}`;
       else if (v.kind === "model_switch") detail = `${p.from ?? "?"} → ${p.to ?? "?"}`;
       else if (v.kind === "tool_call") detail = `tool=${p.tool ?? ""}`;
+      else if (v.kind === "check_run") detail = `${p.status ?? "?"}${p.exitCode != null ? " (exit " + p.exitCode + ")" : ""} · ${p.command ?? ""}${p.outputSha256 ? " · output sha256 " + String(p.outputSha256).slice(0, 12) + "…" : ""}`;
+      else if (v.kind === "commit") detail = `${String(p.sha ?? "").slice(0, 10)} ${p.subject ?? ""}${Array.isArray(p.files) ? " · " + p.files.length + " file(s)" : ""}${p.amend ? " · amend" : ""}`;
       else if (v.kind === "external_evidence") detail = `${p.source ?? "evidence"} · sha256 ${(p.sha256 || "").slice(0, 12)}… · ${p.uri ?? ""}${p.note ? " · " + p.note : ""}`;
       cell(tr, v.seq);
       cell(tr, `${v.kind}${e.redacted ? " ⚠" : ""}`, "kind");

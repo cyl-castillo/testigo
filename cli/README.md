@@ -11,7 +11,7 @@ speaking the [Testigo protocol](../SPEC.md). Zero dependencies, Node ≥ 20.
 /plugin install testigo@testigo
 ```
 
-Witnessing starts with your next session — the plugin wires the four capture
+Witnessing starts with your next session — the plugin wires the capture
 hooks automatically and adds three commands: `/testigo:status` (chain health
 + recent evidence), `/testigo:link` (bind the session to a case) and
 `/testigo:export` (pre-sign review, then sign). Use the plugin **or**
@@ -29,13 +29,13 @@ testigo export --case jira:PROJ-42          # pre-sign review (nothing signed)
 testigo export --case jira:PROJ-42 --yes    # sign & write the proof packet
 ```
 
-`init` wires six hooks (SessionStart, UserPromptSubmit, PreToolUse,
-PostToolUse, PostModelSwitch, Stop) into `.claude/settings.json` (`--user`
+`init` wires seven hooks (SessionStart, UserPromptSubmit, PreToolUse,
+PostToolUse, PostToolUseFailure, PostModelSwitch, Stop) into `.claude/settings.json` (`--user`
 for `~/.claude/settings.json`, `--print` to just look). From then on every
 session start (engine, and the model when Claude Code sends it), prompt
 (with the sha256 of the `CLAUDE.md` / `.claude/CLAUDE.md` / `AGENTS.md`
-present in its cwd at that moment), tool call, tool result, model switch and
-turn end lands in a per-project, hash-chained, append-only ledger under
+present in its cwd at that moment), tool call, tool result (failed ones
+too), test/check run, model switch and turn end lands in a per-project, hash-chained, append-only ledger under
 `~/.local/share/testigo/` — outside the repo, never pushed. Hook failures
 never break a session (exit 0 always; `TESTIGO_DEBUG=1` to see them).
 
@@ -55,6 +55,18 @@ prompts ran under, and the session window (which any verifier checks against
 the events). `--owner login|email` (default: the project's `git config
 user.email`) and `--model provider/name` (the model you asked for) are the
 two things you declare on top.
+
+## Test and check runs
+
+When the agent runs a recognized test or check command (`cargo test`,
+`npm test`, `pytest`, `go test`, `make check` and the rest of the
+reference implementation's allow-list), the result is followed by a
+`check_run` outcome event (SPEC §1.7): the command, `passed` or `failed`
+as Claude Code reported it, the exit code when the failure text carries
+it, the duration, and the sha256 of the full output. A reviewer reads it
+before any prompt; a receiver holding the output recomputes the digest.
+It is declared by the producer, like everything in the chain: `passed`
+means the tool call completed, not that the suite is meaningful.
 
 ## External evidence
 
