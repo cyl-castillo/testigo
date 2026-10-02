@@ -39,6 +39,32 @@ too), test/check run, model switch and turn end lands in a per-project, hash-cha
 `~/.local/share/testigo/` — outside the repo, never pushed. Hook failures
 never break a session (exit 0 always; `TESTIGO_DEBUG=1` to see them).
 
+Generated commands use the current Node executable and absolute script path,
+quoted as literal arguments for sh/Git Bash (including Windows). Git Bash
+must be installed on Windows for this default. Use `init --shell powershell`
+to generate a PowerShell command instead; the settings explicitly select the
+chosen shell. Spaces, apostrophes, and shell metacharacters in paths are
+preserved. These commands are not cmd.exe/batch syntax. `--command CMD`
+remains a verbatim override: quote it for the selected hook shell, which may
+differ from the terminal running `init`. `--user` uses the platform home
+directory (`USERPROFILE` on Windows), independent of the project directory.
+
+Unlike the earlier `node` command resolved through `PATH`, generated commands
+pin `process.execPath`. If nvm/asdf switches Node versions, the hook keeps using
+the version that ran `init`; removing that version breaks the command. Rerun
+`init` with the replacement Node version before removing the old one. To keep
+using `node` from `PATH`, supply a suitably quoted `--command` override.
+
+Rerunning `init` replaces recognized legacy commands for this CLI and removes
+duplicate registrations in its default, unconditional matcher groups. It
+reports installed/replaced/removed counts, or `already installed` when no
+change is needed. Unrelated commands and restricted matcher groups are
+preserved; wrappers and commands containing shell expansions are not guessed
+at. Changed settings are backed up to `.bak`; a no-op leaves that backup intact.
+
+The `shell` property is a documented [Claude Code command-hook field](https://code.claude.com/docs/en/hooks#command-hook-fields):
+`bash` selects sh/Git Bash, and `powershell` selects PowerShell on Windows.
+
 Exports are [proof packets](../SPEC.md#2-the-proof-packet): a DSSE-signed
 in-toto statement anyone verifies with the
 [standalone verifier](../verifier/testigo-verifier.html) (written alongside
@@ -106,7 +132,8 @@ Honesty first (it's the protocol's house style):
 
 ## Correctness
 
-`npm test` runs the end-to-end and concurrency suites: hook capture (including
+`npm test` runs the end-to-end, portability and concurrency suites. `node test.mjs`
+runs the end-to-end suite: hook capture (including
 interleaved sessions and a crash-torn tail healing), case linking, export
 with auto + manual redaction and out-of-case stubs, verification by both
 this CLI's verifier and the [conformance suite's](../conformance/)
@@ -138,3 +165,10 @@ is active**. PID reuse or an inaccessible owner can also prevent automatic
 reclamation. Upgrade all writers together; mixed versions and shared
 storage across hosts are not covered by this locking guarantee. Existing
 torn-tail handling is unchanged.
+
+The portability suite exercises generated commands in sh/Git Bash and, on
+Windows, PowerShell, from paths containing spaces and special characters;
+it also checks user settings, verifier copying, and the vector entrypoints.
+On Windows it locates Git Bash in its standard install directory, or uses
+`TESTIGO_TEST_BASH` when set to its executable path. Missing shells are
+reported as skipped tests.
