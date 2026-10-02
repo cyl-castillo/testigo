@@ -23,11 +23,18 @@ test("CLI and reference verifiers retain all conformance verdicts", () => {
       const reference = referenceVerify(packet, manifest.enforce ?? {});
       assert.equal(reference.valid, vector.expect.valid, `reference: ${vector.file}`);
       if (!vector.expect.valid) assert.equal(reference.firstFailure, vector.expect.firstFailure, vector.file);
-      // The generic CLI intentionally does not enforce session-chain migration.
-      const cliExpected = vector.expect.valid || ["predicateType", "exportedAt"].includes(vector.expect.firstFailure);
+      // The CLI implements the Testigo profile only: Testigo vectors must
+      // reproduce the manifest verdict exactly, and a session-chain draft
+      // packet cannot opt itself in, so it fails Testigo's profile checks
+      // (same rule as cli/test.mjs).
+      const draft = Boolean(manifest.enforce);
+      const cliExpected = draft ? { valid: false, firstFailure:
+        vector.file === "sc-invalid-payload-type.proofpack.json" ? "payloadType" :
+        vector.file === "sc-invalid-statement-type.proofpack.json" ? "statementType" :
+        vector.file === "sc-invalid-predicate-type.proofpack.json" ? "predicate" : "predicateType" } : vector.expect;
       const cli = cliVerify(packet);
-      assert.equal(cli.valid, cliExpected, `CLI: ${vector.file}`);
-      if (!cliExpected) assert.equal(cli.firstFailure, vector.expect.firstFailure, vector.file);
+      assert.equal(cli.valid, cliExpected.valid, `CLI: ${vector.file}`);
+      if (!cliExpected.valid) assert.equal(cli.firstFailure, cliExpected.firstFailure, vector.file);
       for (const result of [reference, cli]) if (result.valid) {
         if (vector.expect.counts) assert.deepEqual(result.counts, vector.expect.counts, vector.file);
         if (vector.expect.timestamp) assert.equal(result.timestamp, vector.expect.timestamp, vector.file);

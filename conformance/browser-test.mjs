@@ -21,7 +21,13 @@ class Element {
   addEventListener() {}
   appendChild(child) { this.children.push(child); }
   append(...children) { this.children.push(...children); }
+  // summarize() counts `#oks .cls, #notes .cls`; checks live in those two groups.
+  querySelectorAll(selector) {
+    const cls = selector.match(/\.([\w-]+)/)[1];
+    return renderedChecks().filter(e => e.className.split(" ").includes(cls));
+  }
 }
+const renderedChecks = () => [...document.getElementById("oks").children, ...document.getElementById("notes").children];
 const elements = new Map();
 const document = {
   getElementById(id) { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); },
@@ -37,7 +43,7 @@ for (const dir of ["vectors", "../predicate/vectors"]) {
     const text = fs.readFileSync(path.join(here, dir, vector.file), "utf8");
     context.inputFile = { text: async () => text };
     await vm.runInContext("load(inputFile)", context);
-    const checks = document.getElementById("checks").children;
+    const checks = renderedChecks();
     const failures = checks.filter(e => e.className === "check fail").map(e => e.textContent);
     // Browser implements Testigo, so default reference behavior applies to
     // the explicit draft corpus (including its wrong-parent-type negative).
