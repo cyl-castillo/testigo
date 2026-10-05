@@ -10,7 +10,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 
-import { append, caseFor, readLedger, readState } from "./ledger.mjs";
+import { append, caseFor } from "./ledger.mjs";
 
 export const SOURCES = ["claude-code-transcript", "anthropic-compliance-api", "github-agent-logs", "file", "url"];
 
@@ -33,25 +33,28 @@ export async function digestTarget(target) {
 /// Append an `external_evidence` event bound to the case of `termId` (or
 /// the most recently active session). `source` names the system the record
 /// comes from; `note` is free text (what the record is, for a human).
+///
+/// The digest happens first (disk or network, no lock held). The binding —
+/// which terminal, which case — is selected inside append's factory, under
+/// the same ledger lock as the record, exactly as the hooks do: a prompt or
+/// case link that lands while attach waits for the lock is seen, so the
+/// evidence can never be attached to a session that was current only at
+/// the moment of selection.
 export async function attachEvidence(root, { target, source = "file", note, termId, turnId }) {
   if (!SOURCES.includes(source)) throw new Error(`unknown source "${source}" (one of: ${SOURCES.join(", ")})`);
   const d = await digestTarget(target);
-  let term = termId;
-  if (!term) {
-    const sessions = Object.entries(readState(root).sessions ?? {}).sort((a, b) => (b[1].lastTs ?? 0) - (a[1].lastTs ?? 0));
-    term = sessions[0]?.[0];
-    if (!term) {
-      const { parsed } = readLedger(root);
-      term = parsed.at(-1)?.termId;
-    }
-  }
-  const caseId = term ? caseFor(root, term) : "unbound";
-  return append(root, {
-    caseId,
-    ...(turnId ? { turnId } : {}),
-    kind: "external_evidence",
-    ...(term ? { termId: term, sessionId: term } : {}),
-    actor: "system",
-    payload: { source, uri: d.uri, sha256: d.sha256, bytes: d.bytes, ...(d.mediaType ? { mediaType: d.mediaType } : {}), ...(note ? { note } : {}) },
+  const payload = { source, uri: d.uri, sha256: d.sha256, bytes: d.bytes, ...(d.mediaType ? { mediaType: d.mediaType } : {}), ...(note ? { note } : {}) };
+  return append(root, (state, events) => {
+    // Most recently active session = the last event carrying one, in ledger
+    // (lock-acquisition) order; an unsessioned tail still names its terminal.
+    const term = termId ?? events.findLast((e) => e.sessionId)?.sessionId ?? events.at(-1)?.termId;
+    return {
+      caseId: term ? caseFor(root, term, state) : "unbound",
+      ...(turnId ? { turnId } : {}),
+      kind: "external_evidence",
+      ...(term ? { termId: term, sessionId: term } : {}),
+      actor: "system",
+      payload,
+    };
   });
 }

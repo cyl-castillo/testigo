@@ -139,13 +139,14 @@ export function bounded(value) {
 
 /// Append an event (or an ordered batch): lock → chain → repair a torn tail /
 /// missing separator → write → fsync. `spec` = {caseId, turnId?, kind, termId?, sessionId?, actor, payload},
-/// or a synchronous factory receiving state derived from this locked tail.
+/// or a synchronous factory receiving the state derived from this locked
+/// tail (and the parsed events it was derived from).
 /// Binding selection and the append therefore share one consistency boundary.
 export function append(root, spec) {
   const p = ledgerPath(root);
   return withLock(p, () => {
     const { lines, parsed, tornTail, missingNewline, tailOffset } = readLedger(root);
-    if (typeof spec === "function") spec = spec(stateFromEvents(parsed));
+    if (typeof spec === "function") spec = spec(stateFromEvents(parsed), parsed);
     if (!spec) return;
     const specs = Array.isArray(spec) ? spec : [spec];
     if (!specs.length) return;

@@ -105,6 +105,31 @@ assert.equal(attached.caseId, "jira:CONF-9", "attached evidence binds to the ter
 assert.equal(attached.payload.sha256, crypto.createHash("sha256").update(fs.readFileSync(EXPORT)).digest("hex"));
 assert.equal(attached.payload.note, "org export, session " + S1);
 await assert.rejects(attachEvidence(ROOT, { target: EXPORT, source: "bogus" }), /unknown source/);
+// The binding is selected under the ledger lock, like a hook's: a session that
+// becomes the most recent one while attach is taking the lock is the one the
+// evidence binds to. Selecting before locking would attach to the stale one.
+{
+  const RACE = path.join(SANDBOX, "race-project");
+  fs.mkdirSync(RACE, { recursive: true });
+  handleHook({ hook_event_name: "UserPromptSubmit", session_id: "early", cwd: RACE, prompt: "early" });
+  const realMkdir = fs.mkdirSync;
+  let injected = false;
+  fs.mkdirSync = (p, ...rest) => {
+    if (!injected && String(p).endsWith(".lock")) {
+      injected = true;
+      fs.mkdirSync = realMkdir;
+      // Lands under its own lock, before attach acquires it.
+      handleHook({ hook_event_name: "UserPromptSubmit", session_id: "late", cwd: RACE, prompt: "late" });
+    }
+    return realMkdir(p, ...rest);
+  };
+  let raced;
+  try { raced = await attachEvidence(RACE, { target: EXPORT, source: "file" }); } finally { fs.mkdirSync = realMkdir; }
+  assert.ok(injected, "the competing prompt landed while attach was taking the lock");
+  assert.equal(raced.termId, "late", "attach binds to the session that was most recent under the lock");
+  assert.equal(raced.caseId, "term:late");
+  assert.ok(verifyChain(RACE).ok, "the raced ledger still chains");
+}
 ({ parsed } = readLedger(ROOT));
 const linked = parsed.filter((e) => e.caseId === "jira:CONF-9");
 assert.deepEqual(linked.map((e) => e.kind), ["case_link", "prompt", "turn_end", "external_evidence"], "post-link S1 events carry the case");

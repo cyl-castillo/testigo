@@ -154,7 +154,10 @@ anthropic-compliance-api|github-agent-logs|file|url [--note …]` does the same
 for any record you hold: a Compliance API export, a downloaded GitHub agent
 session log, an artefact. The packet carries the commitment, never the
 bytes; the verifier reports it and does not pretend to have checked the
-record (spec §1.7).
+record (spec §1.7). Unless `--term` names the terminal, the evidence binds
+to the most recently active session — chosen under the same ledger lock as
+the append, like a hook's binding, so a prompt arriving in parallel cannot
+leave it attached to a stale session.
 
 ## What this captures — and what it doesn't
 
