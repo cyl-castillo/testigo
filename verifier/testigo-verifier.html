@@ -356,7 +356,6 @@ async function load(f) {
   }
   const tbl = document.createElement("table");
   tbl.innerHTML = "<tr><th>seq</th><th>kind</th><th>actor</th><th>detail</th></tr>";
-  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   for (const e of events) {
     const tr = document.createElement("tr");
     // Packet values are untrusted even when the signature verifies.

@@ -81,19 +81,42 @@ test("browser rendering treats packet values as text", async (t) => {
       return state;
     }
 
-    for (const field of ["stub.seq", "stub.kind", "event.seq"]) for (const signed of [false, true]) {
+    // Profile validation rejects a non-integer seq before any row is built, so
+    // the packet-controlled strings that still reach the table are kind fields.
+    for (const field of ["stub.kind", "event.kind"]) for (const signed of [false, true]) {
       await t.test(`${field}, ${signed ? "valid" : "invalid"} signature`, async () => {
         let index;
         const packet = mutate((pred) => {
           index = pred.events.findIndex((e) => field.startsWith("stub.") ? e.stub : e.line);
           const e = pred.events[index];
-          if (e.stub) e.stub[field.split(".")[1]] = attack;
-          else { const v = JSON.parse(e.line); v.seq = attack; e.line = JSON.stringify(v); }
+          if (e.stub) e.stub.kind = attack;
+          else { const v = JSON.parse(e.line); v.kind = attack; e.line = JSON.stringify(v); }
         }, signed);
         const state = await render(packet);
-        assert.ok(state.checks.includes(signed ? "Signature valid" : "Signature INVALID"));
-        assert.equal(state.rows[index][field === "stub.kind" ? 3 : 0], field === "stub.kind" ? `${attack} (other case, linkage only)` : attack);
+        if (!signed) {
+          // The page stops at an invalid signature: nothing below it is interpreted.
+          assert.ok(state.checks.includes("Signature INVALID"));
+          assert.deepEqual(state.rows, [], "no rows after an invalid signature");
+          return;
+        }
+        assert.ok(state.checks.includes("Signature valid"));
+        if (field === "stub.kind") assert.equal(state.rows[index][3], `${attack} (other case, linkage only)`);
+        else assert.ok(state.rows[index][1].startsWith(attack), "kind cell is literal");
         assert.ok(state.rows.every((row) => row.length === 4));
+      });
+    }
+
+    for (const field of ["stub.seq", "event.seq"]) {
+      await t.test(`${field} that is not an integer: no rows, nothing executes (valid signature)`, async () => {
+        const packet = mutate((pred) => {
+          const e = pred.events.find((e) => field.startsWith("stub.") ? e.stub : e.line);
+          if (e.stub) e.stub.seq = attack;
+          else { const v = JSON.parse(e.line); v.seq = attack; e.line = JSON.stringify(v); }
+        }, true);
+        const state = await render(packet);
+        assert.ok(state.checks.includes("Signature valid"));
+        assert.ok(state.checks.includes("sequence: packet does not satisfy the Testigo profile"), "structure failure is reported");
+        assert.deepEqual(state.rows, [], "a packet that fails the profile renders no event rows");
       });
     }
 
@@ -113,39 +136,49 @@ test("browser rendering treats packet values as text", async (t) => {
         [attack, {}, ""],
       ];
       const packet = mutate((pred) => {
+        // Structurally valid lines (ts, enum actor, linkage fields) so the
+        // profile check passes and every detail branch actually renders.
         pred.events = cases.map(([kind, payload], seq) => ({
-          line: JSON.stringify({ seq, kind, actor: attack, caseId: attack, payload }), redacted: seq % 2 === 1,
+          line: JSON.stringify({ seq, ts: seq + 1, caseId: attack, kind, actor: "agent", payload,
+            prevHash: seq ? "a".repeat(64) : "genesis", hash: "a".repeat(64) }),
+          redacted: seq % 2 === 1,
         }));
-      });
+        pred.range = { fromSeq: 0, toSeq: cases.length - 1, prevHashBefore: "genesis" };
+      }, true);
       const state = await render(packet);
-      assert.deepEqual(state.rows, cases.map(([kind, , detail], seq) => [String(seq), kind + (seq % 2 ? " ⚠" : ""), attack, detail]));
+      assert.deepEqual(state.rows, cases.map(([kind, , detail], seq) => [String(seq), kind + (seq % 2 ? " ⚠" : ""), "agent", detail]));
       assert.equal(await page.locator("#events td.kind").count(), cases.length);
     });
 
     await t.test("metadata, process context and timestamp display paths", async () => {
       const packet = mutate((pred, packet) => {
-        delete pred.exportedAtMs;
+        // exportedAtMs and the numeric range stay valid: the profile check
+        // rejects them otherwise and nothing below would render.
         Object.assign(pred, {
           caseId: attack, project: attack, exportedAt: attack, generator: attack, owner: attack,
-          range: { ...pred.range, fromSeq: attack, toSeq: attack },
           provider: { harness: { name: attack, version: attack }, agent: { name: attack }, languageModels: [{ resolved: attack }] },
           contextArtifacts: [{ tags: [attack], uri: attack }],
         });
-        packet.timestamp.tsaUrl = attack;
-      }, false, "valid-timestamped");
+      }, true, "valid-timestamped");
       const state = await render(packet);
-      assert.equal(state.meta.split(attack).length - 1, 13, "all declared metadata values remain literal");
-      assert.ok(state.checks.includes(attack), "TSA warning remains literal");
-      assert.ok(state.tsp.includes(attack), "TSA metadata remains literal");
+      assert.equal(state.meta.split(attack).length - 1, 10, "all declared metadata values remain literal");
+      // The timestamp block sits outside the signed statement, so it is
+      // exercised on the untouched vector: re-signing would break the
+      // token's imprint and the page would report a mismatch instead.
+      const stamped = vector("valid-timestamped");
+      stamped.timestamp.tsaUrl = attack;
+      const tsa = await render(stamped);
+      assert.ok(tsa.checks.includes(attack), "TSA warning remains literal");
+      assert.ok(tsa.tsp.includes(attack), "TSA metadata remains literal");
       const link = page.locator("#tsp a");
       assert.match(await link.getAttribute("href"), /^blob:/);
       assert.equal(await link.getAttribute("download"), "packet.tsr");
-      packet.timestamp.type = attack;
-      const unknownTimestamp = await render(packet);
+      stamped.timestamp.type = attack;
+      const unknownTimestamp = await render(stamped);
       assert.ok(unknownTimestamp.checks.includes(`Timestamp of unknown type "${attack}"`));
       assert.equal(unknownTimestamp.tsp, "", "previous timestamp is cleared");
-      packet.format = attack;
-      const unknownFormat = await render(packet);
+      stamped.format = attack;
+      const unknownFormat = await render(stamped);
       assert.ok(unknownFormat.checks.includes(`Unknown format: ${attack}`));
       assert.deepEqual(unknownFormat.rows, [], "previous event rows are cleared");
       assert.equal(unknownFormat.meta, "");
@@ -164,7 +197,12 @@ test("browser rendering treats packet values as text", async (t) => {
           e.line = JSON.stringify({ ...JSON.parse(e.line), payload });
         }, signed, "valid-external-evidence");
         const state = await render(packet);
-        assert.ok(state.checks.includes(signed ? "Signature valid" : "Signature INVALID"), `${field}: signature`);
+        if (!signed) {
+          assert.ok(state.checks.includes("Signature INVALID"), `${field}: signature`);
+          assert.deepEqual(state.rows, [], `${field}: no rows after an invalid signature`);
+          continue;
+        }
+        assert.ok(state.checks.includes("Signature valid"), `${field}: signature`);
         assert.equal(state.rows[2][3], `${payload.source} · sha256 ${payload.sha256.slice(0, 12)}… · ${payload.uri} · ${payload.note}`, `${field}: literal detail`);
       }
     });
@@ -199,16 +237,34 @@ test("browser rendering treats packet values as text", async (t) => {
 
     await t.test("all golden vectors render with existing verification messages", async () => {
       const failures = {
-        format: "Unknown format:", keyid: "Embedded key id does not match", signature: "Signature INVALID",
-        digest: "Subject digest does NOT match", linkage: "Hash chain linkage BROKEN", contentHash: "failed content hash recomputation",
-        redactionCount: "Declared redactionCount", timestamps: "Declared session window does NOT match", processContext: "Process context malformed",
+        format: ["Unknown format:"], keyid: ["key id does not match"], signature: ["Signature INVALID"],
+        digest: ["Subject digest does NOT match"], linkage: ["Hash chain linkage BROKEN"], contentHash: ["failed content hash recomputation"],
+        // A miscount is reported after the chain; a malformed count fails the profile first.
+        redactionCount: ["Declared redactionCount", "redactionCount: packet does not satisfy"],
+        timestamps: ["Declared session window does NOT match"], processContext: ["Process context malformed"],
       };
+      const profileFailure = "packet does not satisfy the Testigo profile";
+      // The page stops at the first envelope, key, signature or profile failure
+      // and renders no rows: it never interprets what it could not validate.
+      const stops = [profileFailure, "Signature INVALID", "key id does not match", "payloadType:", "payload: invalid base64", "Process context malformed"];
       for (const { dir, manifest } of corpora) for (const v of manifest.vectors) {
         const packet = readJSON(new URL(v.file, dir));
         const state = await render(packet);
-        if (v.expect.firstFailure in failures) assert.ok(state.checks.includes(failures[v.expect.firstFailure]), v.file);
-        // The HTML verifier does not enforce the draft's migration guards.
+        if (manifest.enforce) {
+          // The browser implements the Testigo profile only: a session-chain
+          // draft packet stops at the first envelope, signature or profile
+          // failure (predicateType at the latest) and renders nothing below it.
+          assert.ok(stops.some((text) => state.checks.includes(text)), `${v.file}: draft packet stops`);
+          if (v.expect.valid) assert.ok(state.checks.includes("Signature valid"), v.file);
+          assert.deepEqual(state.rows, [], `${v.file}: no rows after the page stopped`);
+          continue;
+        }
+        if (v.expect.firstFailure in failures) assert.ok(failures[v.expect.firstFailure].some((text) => state.checks.includes(text)), v.file);
         if (v.expect.valid) assert.ok(state.checks.includes("Signature valid"), v.file);
+        if (stops.some((text) => state.checks.includes(text))) {
+          assert.deepEqual(state.rows, [], `${v.file}: no rows after the page stopped`);
+          continue;
+        }
         if (v.expect.timestamp === "mismatch") assert.ok(state.checks.includes("imprint does not match"), v.file);
         if (v.expect.timestamp === "declared") assert.ok(state.checks.includes("NOT cryptographically verified"), v.file);
         if (v.expect.firstFailure !== "format") {
