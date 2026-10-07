@@ -30,7 +30,7 @@ jobs:
         working-directory: cli
       # test-portability.mjs fails on GitHub's windows runners independently of
       # any change here (the special-character checkout path is not found by
-      # node; passes on developer Windows machines) — see the tracking issue.
+      # node; passes on developer Windows machines) — see #31.
       # Everything else in the cli suite runs on Windows.
       - name: cli (ledger, e2e, review, concurrency — portability tracked separately)
         if: runner.os == 'Windows'
