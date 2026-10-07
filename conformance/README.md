@@ -14,6 +14,17 @@ everything passes). Producer bugs are *signed over* —
 signature** around an internal defect, because that is exactly the laundering
 a verifier must catch instead of stopping at "signature OK".
 
+**What counts as agreement.** For an independent reader the contract is the
+accept/reject verdict on every vector. `firstFailure` names the step each
+negative was cut to isolate — the reference verifier is pinned to it, which
+is why `verify.mjs` compares the code — but SPEC §2.4 requires rejection
+without ranking the structural checks against each other. A reader that
+reaches the same verdict through a different structural check is in
+agreement. Example: an empty `events` array isolates `range` here (an empty
+array cannot describe a nonempty inclusive range) and `events` is reserved
+for "not an array"; a reader that reports `events` for the empty case is not
+wrong, it is reading the same text in a different order.
+
 | vector | isolates | expected |
 |---|---|---|
 | `valid-minimal` | — | valid; 5/5 content hashes recompute |
