@@ -8,9 +8,9 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { append, ledgerPath, readLedger, verifyChain } from "../cli/lib/ledger.mjs";
-import { exportPacket } from "../cli/lib/export.mjs";
-import { verifyPacket as cliVerify } from "../cli/lib/verify.mjs";
+import { append, ledgerPath, readLedger, verifyChain } from "../packages/core/ledger.mjs";
+import { exportPacket } from "../packages/core/export.mjs";
+import { verifyPacket as cliVerify } from "../packages/core/verify.mjs";
 import { verifyPacket as referenceVerify } from "./verify.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));

@@ -21,7 +21,7 @@
 // moment. The export derives the predicate-level fields from these hashed
 // lines, so what the packet declares about the run is what the run recorded.
 
-import { append, bounded, caseFor, sha256hex } from "./ledger.mjs";
+import { append, bounded, caseFor, sha256hex } from "../vendor/core/ledger.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

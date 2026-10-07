@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: core + cli + conformance (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ matrix.node }}
+      - name: vendored core matches packages/core
+        run: node scripts/vendor.mjs check
+      - name: cli (ledger, e2e, review, portability, concurrency)
+        if: runner.os != 'Windows'
+        run: npm test
+        working-directory: cli
+      # test-portability.mjs fails on GitHub's windows runners independently of
+      # any change here (the special-character checkout path is not found by
+      # node; passes on developer Windows machines) — see #31.
+      # Everything else in the cli suite runs on Windows.
+      - name: cli (ledger, e2e, review, concurrency — portability tracked separately)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          node ../scripts/vendor.mjs check
+          node --test test-ledger.mjs
+          node test.mjs
+          node review.test.mjs
+          node test-concurrency.mjs
+        working-directory: cli
+      - name: conformance vectors (reference verifier)
+        run: node conformance/verify.mjs
+      - name: conformance regressions (core, CLI and reference verifier)
+        run: |
+          node --test conformance/hash.test.mjs
+          node conformance/validation-test.mjs
+          node conformance/browser-test.mjs
+
+  verifier:
+    name: browser verifier (real Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+        working-directory: verifier
+      - run: npm test
+        working-directory: verifier
+        env:
+          BROWSER_CHANNEL: chrome

@@ -280,7 +280,16 @@ function requireReviewProvenance(root, statement) {
 /// Sign saved review bytes only after checking their ledger provenance.
 /// Do not regenerate the statement, git identity, or export time.
 /// --yes without a review remains an explicit unattended export.
-export async function exportPacket(root, { outDir, tsa = null, reviewFile = null, ...options }) {
+/// Where a verifier sits relative to this module: `<plugin>/verifier/` when
+/// the core is vendored under `<plugin>/vendor/core/`, or `<repo>/verifier/`
+/// from `packages/core/` (and from a vendored copy inside the repo checkout).
+/// Callers that know better pass `verifierCandidates` explicitly.
+export function defaultVerifierCandidates(from = import.meta.url) {
+  const here = path.dirname(fileURLToPath(from));
+  return ["..", "../.."].map((up) => path.join(here, "..", up, "verifier", "testigo-verifier.html"));
+}
+
+export async function exportPacket(root, { outDir, tsa = null, reviewFile = null, verifierCandidates = defaultVerifierCandidates(), ...options }) {
   const payload = reviewFile
     ? fs.readFileSync(reviewFile)
     : Buffer.from(JSON.stringify(prepareStatement(root, options)), "utf8");
@@ -319,12 +328,10 @@ export async function exportPacket(root, { outDir, tsa = null, reviewFile = null
   fs.writeFileSync(tmp, JSON.stringify(packet, null, 2) + "\n");
   fs.renameSync(tmp, file);
 
-  // Ship the standalone verifier alongside when we can find it (repo
-  // checkout / packaged copy); otherwise point at the hosted one.
+  // Ship the standalone verifier alongside when one can be found (plugin
+  // copy / repo checkout); otherwise point at the hosted one.
   let verifier = HOSTED_VERIFIER;
-  const local = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "verifier", "testigo-verifier.html");
-  const repo = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "verifier", "testigo-verifier.html");
-  for (const src of [local, repo]) {
+  for (const src of verifierCandidates) {
     if (fs.existsSync(src)) {
       verifier = path.join(outDir, "testigo-verifier.html");
       fs.copyFileSync(src, verifier);

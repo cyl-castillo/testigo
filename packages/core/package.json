@@ -1,0 +1,23 @@
+{
+  "name": "@testigo/core",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Engine-neutral reference core of the Testigo protocol: hash-chained evidence ledger, DSSE/in-toto proof-packet export, RFC 3161 timestamps, external evidence, packet verification. Zero dependencies.",
+  "type": "module",
+  "exports": {
+    "./ledger": "./ledger.mjs",
+    "./export": "./export.mjs",
+    "./verify": "./verify.mjs",
+    "./evidence": "./evidence.mjs",
+    "./rfc3161": "./rfc3161.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyl-castillo/testigo",
+    "directory": "packages/core"
+  }
+}

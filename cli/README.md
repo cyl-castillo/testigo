@@ -255,3 +255,12 @@ it also checks user settings, verifier copying, and the vector entrypoints.
 On Windows it locates Git Bash in its standard install directory, or uses
 `TESTIGO_TEST_BASH` when set to its executable path. Missing shells are
 reported as skipped tests.
+
+## Layout
+
+`lib/` is the Claude Code adapter (hook handling, hook installation, command
+quoting). The engine-neutral core it builds on — ledger, export, verify,
+RFC 3161, external evidence — is maintained in
+[`packages/core`](../packages/core/) and vendored here under `vendor/core/`
+(byte-identical, `node scripts/vendor.mjs sync|check`), because Claude Code
+installs only this directory. Edit the core in `packages/core`, then sync.

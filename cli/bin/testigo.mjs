@@ -9,11 +9,11 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { append, ledgerPath, readLedger, verifyChain } from "../lib/ledger.mjs";
+import { append, ledgerPath, readLedger, verifyChain } from "../vendor/core/ledger.mjs";
 import { handleHook, hooksConfig } from "../lib/hook.mjs";
-import { exportPacket, keyInfo, prepareStatement, writeReview } from "../lib/export.mjs";
-import { attachEvidence, SOURCES } from "../lib/evidence.mjs";
-import { verifyPacket } from "../lib/verify.mjs";
+import { exportPacket, keyInfo, prepareStatement, writeReview } from "../vendor/core/export.mjs";
+import { attachEvidence, SOURCES } from "../vendor/core/evidence.mjs";
+import { verifyPacket } from "../vendor/core/verify.mjs";
 import { hookCommand } from "../lib/command.mjs";
 import { installHooks } from "../lib/init.mjs";
 

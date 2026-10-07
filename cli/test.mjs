@@ -34,10 +34,10 @@ fs.writeFileSync(process.env.GIT_CONFIG_GLOBAL, "");
 
 // Import AFTER the env is set — lib paths read XDG at call time, but stay safe.
 const { handleHook, hooksConfig, isCheckCommand } = await import("./lib/hook.mjs");
-const { attachEvidence } = await import("./lib/evidence.mjs");
-const { append, ledgerPath, readLedger, verifyChain } = await import("./lib/ledger.mjs");
-const { exportPacket, preview } = await import("./lib/export.mjs");
-const { verifyPacket } = await import("./lib/verify.mjs");
+const { attachEvidence } = await import("./vendor/core/evidence.mjs");
+const { append, ledgerPath, readLedger, verifyChain } = await import("./vendor/core/ledger.mjs");
+const { exportPacket, preview } = await import("./vendor/core/export.mjs");
+const { verifyPacket } = await import("./vendor/core/verify.mjs");
 const conformance = await import("../conformance/verify.mjs");
 
 const ROOT = path.join(SANDBOX, "proj");

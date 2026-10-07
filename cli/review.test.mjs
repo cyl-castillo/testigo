@@ -6,9 +6,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { append, ledgerPath, readLedger, sha256hex, verifyChain } from "./lib/ledger.mjs";
-import { keyFile, prepareStatement } from "./lib/export.mjs";
-import { verifyPacket } from "./lib/verify.mjs";
+import { append, ledgerPath, readLedger, sha256hex, verifyChain } from "./vendor/core/ledger.mjs";
+import { keyFile, prepareStatement } from "./vendor/core/export.mjs";
+import { verifyPacket } from "./vendor/core/verify.mjs";
 import { verifyPacket as verifyIndependent } from "../conformance/verify.mjs";
 
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "testigo-review-test-"));
