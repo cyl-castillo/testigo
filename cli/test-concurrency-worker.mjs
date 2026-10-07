@@ -54,7 +54,7 @@ await start;
 process.disconnect();
 process.argv = [process.execPath, fileURLToPath(new URL("./bin/testigo.mjs", import.meta.url)), ...process.argv.slice(2)];
 if (process.argv[2] === "hold-lock") {
-  const { withLock } = await import("./lib/ledger.mjs");
+  const { withLock } = await import("./vendor/core/ledger.mjs");
   withLock(process.argv[3], () => {
     fs.writeFileSync(path.join(process.env.XDG_DATA_HOME, "holder-ready"), "");
     pause(30_000);

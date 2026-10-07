@@ -82,6 +82,12 @@ sha256 of the full output) and a `commit` event when the work reaches git
 that way; what makes them checkable is what they bind — the output digest
 and the commit sha.
 
+The engine-neutral reference core — ledger, export, verification, timestamps,
+external evidence — lives in [`packages/core`](packages/core/); adapters per
+engine build on it (the Claude Code plugin ships a vendored copy, see
+[#25](https://github.com/cyl-castillo/testigo/issues/25) for the Codex and
+other plugins that follow).
+
 Lightweight capture without the console: [`cli/`](cli/) is a zero-dependency
 Node CLI that witnesses any Claude Code session via hooks, links cases, and
 exports signed packets — with the capture-scope differences

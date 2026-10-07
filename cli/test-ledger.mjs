@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { append, ledgerPath, readLedger, verifyChain } from "./lib/ledger.mjs";
+import { append, ledgerPath, readLedger, verifyChain } from "./vendor/core/ledger.mjs";
 
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "testigo-ledger-test-"));
 const oldDataHome = process.env.XDG_DATA_HOME;

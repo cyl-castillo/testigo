@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyPacket } from "./verify.mjs";
-import { verifyPacket as cliVerify } from "../cli/lib/verify.mjs";
+import { verifyPacket as cliVerify } from "../packages/core/verify.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const draft = { predicateType: "https://in-toto.io/attestation/session-chain/v0.1" };

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { append, ledgerKey, ledgerPath, readLedger, readState, verifyChain } from "./lib/ledger.mjs";
+import { append, ledgerKey, ledgerPath, readLedger, readState, verifyChain } from "./vendor/core/ledger.mjs";
 import { handleHook } from "./lib/hook.mjs";
 
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "testigo-concurrency-"));
