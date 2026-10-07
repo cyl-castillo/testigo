@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: vendored core matches packages/core
-        run: echo "baseline: no vendor on main"
+        run: echo baseline-no-vendor-on-main
       - name: cli (ledger, e2e, review, portability, concurrency)
         run: npm test
         working-directory: cli
