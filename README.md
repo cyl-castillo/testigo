@@ -62,11 +62,36 @@ vectors isolating every verification step — including valid signatures
 wrapped around internal defects — plus a zero-dependency reference verifier
 (`node conformance/verify.mjs`).
 
-Reference implementation: [agent-console](https://github.com/cyl-castillo/agent-console)
-(≥ v0.48.0) — captures the ledger ambiently from Claude Code / Codex sessions
-(prompts, approvals, tool results, per-turn diffs), exports and signs packets,
-and stamps console-made commits with `Testigo-Case:` trailers resolved from
-ledger evidence.
+## Integrated in a shipping product
+
+Testigo is not only a spec: it ships inside
+[**agent-console**](https://github.com/cyl-castillo/agent-console), a desktop
+console for Claude Code and Codex sessions, released continuously since the
+ledger landed in v0.45.0. There it is a built-in layer, not an add-on:
+
+- **Ambient capture.** Prompts, human approvals (allow/deny + reason), tool
+  results and per-turn working-tree diffs land in the project's ledger as the
+  session runs — nothing to instrument, nothing the user has to remember.
+- **Proof panel.** Pre-sign redaction review, signed packet export, and the
+  verifier a reviewer opens in a browser
+  ([what it looks like](https://github.com/cyl-castillo/agent-console#screenshots)).
+- **Commit trailers.** Console-made commits carry `Testigo-Case:` trailers
+  resolved from ledger evidence, so git history points back at the proof.
+- **Proof on PR.** A CI check
+  ([`testigo-verify`](https://github.com/cyl-castillo/agent-console/blob/main/.github/workflows/testigo-verify.yml))
+  verifies every packet a pull request attaches — signature, digest, chain
+  linkage — and then the PR-level claims: the packet's commit is in the PR's
+  history and the PR's diff is covered by recorded turns. A PR without a
+  packet passes with a note; the packet is an upgrade, not a gate.
+- **Same ledger, other formats.** The evidence also exports as an
+  [IETF Agent Audit Trail](https://datatracker.ietf.org/doc/draft-sharif-agent-audit-trail/)
+  (JSONL, SHA-256 over RFC 8785) for receivers that standardize on that draft.
+
+agent-console is the reference implementation of this spec and the generator
+of the production case study below. Integrating Testigo into another product
+means the same four moves: write the ledger, export a packet, sign it, point
+at the verifier — the engine-neutral core in [`packages/core`](packages/core/)
+is the piece to reuse.
 
 Packets can also **commit to records held elsewhere** — the Claude Code
 transcript at each turn end, an Anthropic Compliance API export, a GitHub
@@ -116,8 +141,8 @@ Testigo prefers a smaller true claim over a bigger false one:
 ## Real-world case study: a production deploy, witnessed
 
 On 2026-07-15, a production deploy of [Fixy](https://fixy.com.uy) (a Uruguayan
-services marketplace operated with AI agents) was verified through a Testigo-
-recorded session: one human intent (`/fixy-status`), three agent commands —
+services marketplace operated with AI agents) was verified through a session
+witnessed by agent-console: one human intent (`/fixy-status`), three agent commands —
 each individually approved by a human — three captured results (services,
 API health, release state), and an empty turn diff proving the verification
 was read-only. Chain intact, packet signed and verified.
@@ -153,7 +178,7 @@ selectively later (per-event redaction keeps the chain verifiable).
 - Reference implementation: shipping since agent-console v0.45.0 (ledger),
   v0.46.0 (turn results), v0.47.0 (packets + verifier), v0.48.0 (timelines +
   commit trailers), v0.49.0 (pre-sign redaction review — the published case
-  study below was produced with it).
+  study above was produced with it).
 - Spec'd and additive: git-ref ledger anchoring (§1.6), RFC 3161 timestamp of
   the packet signature (§2.5 — the demo example carries a real token).
 - Roadmap: sigstore keyless signing, requirement links beyond Jira,
