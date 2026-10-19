@@ -1,0 +1,778 @@
+{
+  "$comment": "Derived from manifest.json by intoto-manifest.mjs in the per-predicate layout of in-toto/attestation#597. `file` paths assume the statements are re-homed under statements/; here they live beside manifest.json.",
+  "predicateType": "https://in-toto.io/attestation/session-chain/v0.1",
+  "specPath": "predicate/session-chain.md",
+  "keyId": "3097e2dee2cb4a34b53840cdb705aed71067c36f68db0e0f559c3f3fa043315f",
+  "comparisonSurface": {
+    "normative": [
+      "verdict"
+    ],
+    "measured": [
+      "codes",
+      "counts",
+      "timestamp"
+    ],
+    "note": "An independent reader conforms when its accept/reject verdict matches every entry. The code on a reject entry is the step the vector was cut to isolate (everything before it passes), and the reference verifier is pinned to it; the draft requires rejection without ranking the structural checks, so a reader reaching the same verdict through a different check is in agreement and the differing code is a reason-parity datum to report, not a failure. Counts and the timestamp status are what a verifier must report visibly (redacted and stub entries, declared-not-verified RFC 3161 tokens), measured for the same reason."
+  },
+  "counts": {
+    "accept": 10,
+    "reject": 37
+  },
+  "vectors": [
+    {
+      "id": "sc-valid-minimal",
+      "kind": "accept",
+      "file": "statements/sc-valid-minimal.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      },
+      "description": "Full-ledger export under the session-chain predicate conventions: all checks pass."
+    },
+    {
+      "id": "sc-valid-redacted-stub",
+      "kind": "accept",
+      "file": "statements/sc-valid-redacted-stub.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5",
+        "entry-forms"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "counts": {
+          "entries": 5,
+          "recomputed": 2,
+          "redacted": 2,
+          "stubs": 1
+        },
+        "timestamp": "none"
+      },
+      "description": "Case export with redactions and a stub; redactionCount counts redacted entries only (stubs are pruning, not redaction)."
+    },
+    {
+      "id": "sc-invalid-linkage",
+      "kind": "reject",
+      "file": "statements/sc-invalid-linkage.proofpack.json",
+      "conditions": [
+        "verification-3"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "linkage"
+        ]
+      },
+      "description": "Producer bug signed over: broken chain linkage at a stub."
+    },
+    {
+      "id": "sc-invalid-redaction-count",
+      "kind": "reject",
+      "file": "statements/sc-invalid-redaction-count.proofpack.json",
+      "conditions": [
+        "verification-4"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "redactionCount"
+        ]
+      },
+      "description": "Producer bug signed over: redactionCount counts the stub as a redaction (3 instead of 2)."
+    },
+    {
+      "id": "sc-valid-process-context",
+      "kind": "accept",
+      "file": "statements/sc-valid-process-context.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "counts": {
+          "entries": 5,
+          "recomputed": 5,
+          "redacted": 0,
+          "stubs": 0
+        },
+        "timestamp": "none"
+      },
+      "description": "Session-chain statement carrying the additive process context (provider, contextArtifacts, session window, owner); the window equals the first/last non-stub line's ts."
+    },
+    {
+      "id": "sc-invalid-predicate-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-predicate-type.proofpack.json",
+      "conditions": [
+        "verification-0"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "predicateType"
+        ]
+      },
+      "description": "Signature-valid statement carrying the PARENT testigo v0.1 predicate type URI. A session-chain checker MUST reject it (spec §5: verifiers reject predicate types they don't implement); a checker that ignores predicateType passes it and is thereby caught."
+    },
+    {
+      "id": "sc-invalid-exported-at",
+      "kind": "reject",
+      "file": "statements/sc-invalid-exported-at.proofpack.json",
+      "conditions": [
+        "verification-0"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "exportedAt"
+        ]
+      },
+      "description": "Signature-valid statement carrying exportedAtMs (epoch ms, the parent convention) instead of RFC 3339 exportedAt. A session-chain checker MUST reject it; a checker that ignores the field convention passes it and is thereby caught."
+    },
+    {
+      "id": "sc-invalid-unknown-predicate-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-unknown-predicate-type.proofpack.json",
+      "conditions": [
+        "verification-0"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "predicateType"
+        ]
+      },
+      "description": "Signed-over isolated predicateType defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-statement-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-statement-type.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "statementType"
+        ]
+      },
+      "description": "Signed-over isolated statementType defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-payload-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-payload-type.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "payloadType"
+        ]
+      },
+      "description": "Signed-over isolated payloadType defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-range-start",
+      "kind": "reject",
+      "file": "statements/sc-invalid-range-start.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-range-end",
+      "kind": "reject",
+      "file": "statements/sc-invalid-range-end.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-range-reversed",
+      "kind": "reject",
+      "file": "statements/sc-invalid-range-reversed.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-range-genesis",
+      "kind": "reject",
+      "file": "statements/sc-invalid-range-genesis.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-range-missing",
+      "kind": "reject",
+      "file": "statements/sc-invalid-range-missing.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-range-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-range-type.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-range-unsafe-integer",
+      "kind": "reject",
+      "file": "statements/sc-invalid-range-unsafe-integer.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-partial-range-genesis",
+      "kind": "reject",
+      "file": "statements/sc-invalid-partial-range-genesis.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-empty-events",
+      "kind": "reject",
+      "file": "statements/sc-invalid-empty-events.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "range"
+        ]
+      },
+      "description": "Signed-over isolated range defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-sequence-full",
+      "kind": "reject",
+      "file": "statements/sc-invalid-sequence-full.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "sequence"
+        ]
+      },
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-sequence-redacted",
+      "kind": "reject",
+      "file": "statements/sc-invalid-sequence-redacted.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "sequence"
+        ]
+      },
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-sequence-stub",
+      "kind": "reject",
+      "file": "statements/sc-invalid-sequence-stub.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "sequence"
+        ]
+      },
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-sequence-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-sequence-type.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "sequence"
+        ]
+      },
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-sequence-negative",
+      "kind": "reject",
+      "file": "statements/sc-invalid-sequence-negative.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "sequence"
+        ]
+      },
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-sequence-fraction",
+      "kind": "reject",
+      "file": "statements/sc-invalid-sequence-fraction.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "sequence"
+        ]
+      },
+      "description": "Signed-over isolated sequence defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-entry-redacted-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-entry-redacted-type.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "entry"
+        ]
+      },
+      "description": "Signed-over isolated entry defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-entry-redacted-missing",
+      "kind": "reject",
+      "file": "statements/sc-invalid-entry-redacted-missing.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "entry"
+        ]
+      },
+      "description": "Signed-over isolated entry defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-entry-ambiguous",
+      "kind": "reject",
+      "file": "statements/sc-invalid-entry-ambiguous.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "entry"
+        ]
+      },
+      "description": "Signed-over isolated entry defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-entry-null",
+      "kind": "reject",
+      "file": "statements/sc-invalid-entry-null.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "entry"
+        ]
+      },
+      "description": "Signed-over isolated entry defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-events-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-events-type.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "events"
+        ]
+      },
+      "description": "Signed-over isolated events defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-subject-empty",
+      "kind": "reject",
+      "file": "statements/sc-invalid-subject-empty.proofpack.json",
+      "conditions": [
+        "parsing-rules",
+        "verification-2"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "subject"
+        ]
+      },
+      "description": "Signed-over isolated subject defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-predicate-null",
+      "kind": "reject",
+      "file": "statements/sc-invalid-predicate-null.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "predicate"
+        ]
+      },
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-project-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-project-type.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "predicate"
+        ]
+      },
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-generator-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-generator-type.proofpack.json",
+      "conditions": [
+        "parsing-rules"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "predicate"
+        ]
+      },
+      "description": "Signed-over isolated predicate defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-redaction-count-type",
+      "kind": "reject",
+      "file": "statements/sc-invalid-redaction-count-type.proofpack.json",
+      "conditions": [
+        "verification-4"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "redactionCount"
+        ]
+      },
+      "description": "Signed-over isolated redactionCount defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-context-artifact-both",
+      "kind": "reject",
+      "file": "statements/sc-invalid-context-artifact-both.proofpack.json",
+      "conditions": [
+        "verification-6"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "processContext"
+        ]
+      },
+      "description": "Signed-over isolated processContext defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-valid-additive-fields",
+      "kind": "accept",
+      "file": "statements/sc-valid-additive-fields.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "timestamp": "none"
+      },
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid."
+    },
+    {
+      "id": "sc-valid-partial-range",
+      "kind": "accept",
+      "file": "statements/sc-valid-partial-range.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "timestamp": "none"
+      },
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid."
+    },
+    {
+      "id": "sc-valid-single-event",
+      "kind": "accept",
+      "file": "statements/sc-valid-single-event.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "timestamp": "none"
+      },
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid."
+    },
+    {
+      "id": "sc-valid-all-stubs",
+      "kind": "accept",
+      "file": "statements/sc-valid-all-stubs.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "timestamp": "none"
+      },
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid."
+    },
+    {
+      "id": "sc-valid-legacy-stub",
+      "kind": "accept",
+      "file": "statements/sc-valid-legacy-stub.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "timestamp": "none"
+      },
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid."
+    },
+    {
+      "id": "sc-valid-optional-metadata-absent",
+      "kind": "accept",
+      "file": "statements/sc-valid-optional-metadata-absent.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "timestamp": "none"
+      },
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid."
+    },
+    {
+      "id": "sc-invalid-missing-redaction-count",
+      "kind": "reject",
+      "file": "statements/sc-invalid-missing-redaction-count.proofpack.json",
+      "conditions": [
+        "verification-4"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "redactionCount"
+        ]
+      },
+      "description": "Signed-over isolated redactionCount defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-exported-at-calendar",
+      "kind": "reject",
+      "file": "statements/sc-invalid-exported-at-calendar.proofpack.json",
+      "conditions": [
+        "verification-0"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "exportedAt"
+        ]
+      },
+      "description": "Signed-over isolated exportedAt defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-valid-artifact-evidence",
+      "kind": "accept",
+      "file": "statements/sc-valid-artifact-evidence.proofpack.json",
+      "conditions": [
+        "verification-0",
+        "verification-1",
+        "verification-2",
+        "verification-3",
+        "verification-4",
+        "verification-5"
+      ],
+      "expected": {
+        "verdict": "valid",
+        "timestamp": "none"
+      },
+      "description": "Compatibility: allowed optional/additive data and ledger segments remain valid."
+    },
+    {
+      "id": "sc-invalid-evidence-digest",
+      "kind": "reject",
+      "file": "statements/sc-invalid-evidence-digest.proofpack.json",
+      "conditions": [
+        "verification-2"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "digest"
+        ]
+      },
+      "description": "Signed-over isolated digest defect; the signature remains valid (no transport tamper)."
+    },
+    {
+      "id": "sc-invalid-repeated-segment-digest",
+      "kind": "reject",
+      "file": "statements/sc-invalid-repeated-segment-digest.proofpack.json",
+      "conditions": [
+        "verification-2"
+      ],
+      "expected": {
+        "verdict": "invalid",
+        "codes": [
+          "digest"
+        ]
+      },
+      "description": "Signed-over isolated digest defect; the signature remains valid (no transport tamper)."
+    }
+  ]
+}

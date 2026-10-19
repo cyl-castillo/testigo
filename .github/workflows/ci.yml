@@ -44,6 +44,8 @@ jobs:
         working-directory: cli
       - name: conformance vectors (reference verifier)
         run: node conformance/verify.mjs
+      - name: session-chain manifest in the in-toto#597 layout is current
+        run: node predicate/vectors/intoto-manifest.mjs --check
       - name: conformance regressions (core, CLI and reference verifier)
         run: |
           node --test conformance/hash.test.mjs

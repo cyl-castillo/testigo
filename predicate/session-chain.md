@@ -92,8 +92,13 @@ statement proves the signer exported this internally-consistent segment and
 that shared content is unmodified since export. It does **not** prove
 completeness (a producer can omit events before sealing), per-event timestamp
 accuracy, or that the events reflect what an independent observer would have
-seen. Consumers MUST NOT claim otherwise; an observed-effect record from an
-independent vantage is the composing answer to that gap.
+seen. Omission is detectable exactly this far: an event removed from a
+segment *after* sealing is detectable by any verifier of the statement
+(contiguous `seq` plus `prevHash` linkage), and an event never recorded
+*before* sealing is detectable by no one from the statement alone — a
+verifiable record is not a complete one. Consumers MUST NOT claim otherwise;
+an observed-effect record from an independent vantage is the composing
+answer to that gap.
 
 ## Schema
 

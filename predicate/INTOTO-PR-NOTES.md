@@ -60,21 +60,28 @@ a corpus owned by the spec, plus **at least two independently authored
 checkers** in parity — dependency-freedom is not assumption-freedom, and
 checkers sharing an author share its blind spots.
 
-State of that evidence as of `e19a522`:
+State of that evidence as of `415fe8b` (first round at `e19a522`: 17 + 6):
 
-- **Corpus**: 17 parent vectors ([`conformance/`](../conformance/)) + 6
+- **Corpus**: 69 parent vectors ([`conformance/`](../conformance/)) + 47
   session-chain vectors ([`vectors/`](vectors/)) instantiating this
   predicate's conventions; produced by one deterministic generator
   (`generate.mjs`, fixed timestamps, deterministic Ed25519 — regeneration is
   byte-identical), so the corpus can be re-homed under the spec repo without
-  reproducibility loss.
+  reproducibility loss. [`vectors/intoto-manifest.json`](vectors/intoto-manifest.json)
+  is the same manifest in the per-predicate layout proposed in
+  in-toto/attestation#597 (verdict normative, codes measured — the
+  "agreement, not obedience" reading from the cross), derived by
+  `intoto-manifest.mjs` and checked in CI.
 - **Checker A**: `conformance/verify.mjs` (Node, zero deps) plus the browser
   verifier — same author as the spec.
 - **Checker B**: written independently by
   [@Rul1an](https://github.com/Rul1an) from the spec text only, without
   reading this repo's code (Python stdlib, Ed25519 from RFC 8032). Parity:
   **11/11** on the parent suite at first run, **4/4** on the session-chain
-  subset, and **17/17 + 6/6** after both sides' corrections landed.
+  subset, **17/17 + 6/6** after both sides' corrections landed, and
+  **69/69 + 47/47** accept/reject parity at `415fe8b` after the profile and
+  suffix tightenings (testigo#7, #17) — where the stale reader, kept
+  alongside, accepted the new negatives (October 2026, testigo#1).
 - **What the cross actually produced** (parity alone would have hidden it):
   `redactionCount` was underspecified (normative in the draft, example-only
   in SPEC) and the migration fields (type URI, `exportedAt`) were

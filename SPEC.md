@@ -501,7 +501,10 @@ of shared events); it has not been modified since export.
 
 - That the ledger is *complete* (events could have been withheld from capture,
   or the whole ledger fabricated before signing — the local ledger is
-  tamper-evident only against post-hoc edits).
+  tamper-evident only against post-hoc edits). Stated as a boundary: an event
+  removed from a segment *after* sealing is detectable by any verifier
+  (contiguous `seq` + linkage); an event never captured is detectable by no
+  one from the packet alone.
 - That per-event timestamps are accurate (`ts` is the producer's local clock).
   A packet-level RFC 3161 token (§2.5) anchors the *export* in time — trust
   then rests on the chosen TSA — but does not correct per-event timestamps.
