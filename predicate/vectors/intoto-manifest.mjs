@@ -89,7 +89,9 @@ function build() {
 
 const text = JSON.stringify(build(), null, 2) + "\n";
 if (process.argv.includes("--check")) {
-  const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+  // Compare with CRLF normalized: a Windows checkout with autocrlf rewrites
+  // the committed file's line endings without changing its content.
+  const current = fs.existsSync(target) ? fs.readFileSync(target, "utf8").replace(/\r\n/g, "\n") : "";
   if (current !== text) {
     console.error(`${path.relative(process.cwd(), target)} is stale: run node ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}`);
     process.exit(1);
